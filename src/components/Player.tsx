@@ -35,11 +35,16 @@ export default function Player({
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
-    const url = playlist(src);
+    const local = /^(?:https?:\/\/hg\.localhost|hg:\/\/localhost)\/file\?/.test(src);
+    const url = local ? src : playlist(src);
+    setErrMsg(""); setTime(0); setDuration(0); setWaiting(false);
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
 
-    if (Hls.isSupported()) {
+    if (local) {
+      video.src = url;
+      if (autoPlay) video.play().catch(() => setPlaying(false));
+    } else if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -134,6 +139,7 @@ export default function Player({
         onPlaying={() => { setWaiting(false); onPlaying?.(); }}
         onTimeUpdate={(e) => setTime((e.target as HTMLVideoElement).currentTime)}
         onLoadedMetadata={(e) => setDuration((e.target as HTMLVideoElement).duration || 0)}
+        onError={() => { setWaiting(false); setErrMsg("视频无法打开，请检查文件或网络连接"); }}
         onEnded={() => onEnded?.()}
       />
 

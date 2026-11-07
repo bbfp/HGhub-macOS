@@ -66,9 +66,10 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     setReady(false);
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
 
-    const proxied = /^https?:\/\/hg\.localhost\//.test(src);
+    const proxied = /^(?:https?:\/\/hg\.localhost|hg:\/\/localhost)\//.test(src);
+    const localFile = /\/file\?/.test(src);
     const url = proxied ? src : playlist(src);
-    const useHls = !url.includes("/seg?u=");
+    const useHls = !localFile && !url.includes("/seg?u=");
 
     /* 换源时先把音量/倍速套回去：hls 重新 attach 后浏览器会把它们重置成默认值 */
     const applySettings = () => {

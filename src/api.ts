@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { detectPlatform, mediaBase } from "./platform";
 import type {
-  CommentPage, Detail, Paged, PlayInfo, Post, RankItem, User, VideoCard,
+  CommentPage, Detail, DownloadSettings, DownloadTask, NetworkSettingsView, NetworkTestResult, Paged, PlayInfo, Post, RankItem, User, VideoCard,
 } from "./types";
 
 /* ── 运行环境 ───────────────────────────────────────────── */
@@ -9,11 +10,12 @@ import type {
 export const APP_VERSION = __APP_VERSION__;
 
 export const isAndroid = /Android/i.test(navigator.userAgent);
-export const platform: "android" | "windows" = isAndroid ? "android" : "windows";
+export const platform = detectPlatform(navigator.userAgent);
 
-/** 自定义协议：Windows 与 Android 都是 http://<scheme>.localhost */
-const scheme = "http";
-export const LOCAL = `${scheme}://hg.localhost`;
+export const LOCAL = mediaBase(platform);
+let activeSiteOrigin = "https://huangguoai.com";
+export const currentSiteOrigin = () => activeSiteOrigin;
+export const siteUrl = (path = "") => `${activeSiteOrigin}${path.startsWith("/") ? path : `/${path}`}`;
 
 /** 封面：经本地协议解密（站点封面是 AES 密文）。 */
 export const cover = (url?: string, _w = 480) =>
@@ -21,6 +23,7 @@ export const cover = (url?: string, _w = 480) =>
 
 /** 播放列表：经本地协议改写分片地址，规避 CORS 与防盗链。 */
 export const playlist = (url: string) => `${LOCAL}/hls?u=${encodeURIComponent(url)}`;
+export const localFile = (path: string) => `${LOCAL}/file?u=${encodeURIComponent(path)}`;
 
 /* ── 调用封装 ───────────────────────────────────────────── */
 
@@ -41,7 +44,11 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 /* ── 接口 ───────────────────────────────────────────────── */
 
 export const api = {
-  boot: () => call<{ user: User | null; logged_in: boolean; base: string }>("app_boot"),
+  boot: async () => {
+    const result = await call<{ user: User | null; logged_in: boolean; base: string; active_base: string }>("app_boot");
+    if (result.active_base) activeSiteOrigin = result.active_base;
+    return result;
+  },
   login: (username: string, password: string) =>
     call<{ user: User }>("api_login", { username, password }),
   register: (username: string, password: string, email = "") =>
@@ -70,7 +77,38 @@ export const api = {
     call<unknown>("api_comment_send", { id, ep, text, replyId: replyId ?? null }),
 
   clearCache: () => invoke<void>("cache_clear"),
+  downloadSettings: () => invoke<DownloadSettings>("download_settings"),
+  setDownloadRoot: (rootDir: string) => invoke<DownloadSettings>("download_settings_set", { rootDir }),
+  setDownloadLimits: (limits: { maxTasks: number; maxEpisodesPerDrama: number; maxSegmentsPerEpisode: number }) =>
+    invoke<DownloadSettings>("download_limits_set", limits),
+  downloadLocalPath: (id: string) => invoke<string>("download_local_path", { id }),
+  downloadTasks: () => invoke<DownloadTask[]>("download_tasks"),
+  downloadWarnings: () => invoke<string[]>("download_warnings"),
+  downloadEnqueue: (args: { dramaId: number; dramaTitle: string; episode: number; episodeTitle: string; sourceUrl: string; rootDir?: string; coverUrl?: string }) =>
+    invoke<DownloadTask>("download_enqueue", {
+      dramaId: args.dramaId,
+      dramaTitle: args.dramaTitle,
+      episode: args.episode,
+      episodeTitle: args.episodeTitle,
+      sourceUrl: args.sourceUrl,
+      rootDir: args.rootDir ?? null,
+      coverUrl: args.coverUrl ?? null,
+    }),
+  downloadPause: (id: string) => invoke<void>("download_pause", { id }),
+  downloadResume: (id: string) => invoke<void>("download_resume", { id }),
+  downloadCancel: (id: string) => invoke<void>("download_cancel", { id }),
   netDiag: () => invoke<Record<string, unknown>>("net_diag"),
+  networkSettings: async () => {
+    const result = await invoke<NetworkSettingsView>("network_settings");
+    if (result.active_domain) activeSiteOrigin = result.active_domain;
+    return result;
+  },
+  setNetworkDomains: async (domains: string[]) => {
+    const result = await invoke<NetworkSettingsView>("network_settings_set", { domains });
+    if (result.active_domain) activeSiteOrigin = result.active_domain;
+    return result;
+  },
+  testNetworkDomains: (domains: string[]) => invoke<NetworkTestResult>("network_settings_test", { domains }),
   postLike: (id: number, on: boolean) => invoke<unknown>("api_post_like", { id, on }),
   postCollect: (id: number, on: boolean) => invoke<unknown>("api_post_collect", { id, on }),
   postComments: (id: number, page: number, size: number) => call<CommentPage>("api_post_comments", { id, page, size }),

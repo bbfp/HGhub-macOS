@@ -69,7 +69,7 @@ function StackPage({ page, onBack, wide, top, bottomInset }: {
 function AppBody() {
   const { platform, tab, setTab, stack, pop, loginOpen, setLoginOpen, fs } = useStore();
   const mainRef = useRef<HTMLDivElement>(null);
-  const [wide, setWide] = useState(platform === "windows");
+  const [wide, setWide] = useState(platform !== "android");
   const [collapsed, setCollapsed] = useState(false);
 
   useLayoutEffect(() => {
@@ -109,7 +109,7 @@ function AppBody() {
 
   return (
     <div className={`absolute inset-0 flex bg-canvas plat-${platform}`}>
-      {platform === "windows" && <WindowsRail collapsed={collapsed} />}
+      {platform !== "android" && <WindowsRail collapsed={collapsed} />}
       <div ref={mainRef} className="relative flex-1 min-w-0 overflow-hidden win-main">
         <div className={vis("home")}><Home active={pageActive && tab === "home"} bottomInset={bottomInset} /></div>
         <div className={vis("search")}><Search active={pageActive && tab === "search"} wide={wide} /></div>
@@ -132,13 +132,14 @@ function AppBody() {
 function DesktopShell() {
   const [collapsed, setCollapsed] = useState(false);
   const theater = useStore().theater;
+  const platform = useStore().platform;
   return (
     <div className="absolute inset-0 flex flex-col bg-canvas win-root">
       <WindowsTitleBar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div className="relative flex-1 min-h-0">
         <ShellInner collapsed={collapsed || theater} theater={theater} />
       </div>
-      <ResizeHandles />
+      {platform === "windows" && <ResizeHandles />}
     </div>
   );
 }
@@ -255,7 +256,7 @@ export default function App() {
 
   return (
     <>
-      {platform === "windows" ? <DesktopShell /> : <MobileShell />}
+      {platform !== "android" ? <DesktopShell /> : <MobileShell />}
       <LoginModal />
       <ToastHost />
       {/* 登录遮罩键盘处理占位 */}

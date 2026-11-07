@@ -1,0 +1,22 @@
+[
+  "./configure",
+  "--disable-gpl",
+  "--disable-nonfree",
+  "--disable-autodetect",
+  "--disable-shared",
+  "--enable-static",
+  "--disable-doc",
+  "--disable-debug",
+  "--disable-network",
+  "--disable-everything",
+  "--enable-ffmpeg",
+  "--enable-ffprobe",
+  "--enable-protocol=file",
+  "--enable-demuxer=hls,mpegts,mov",
+  "--enable-muxer=mp4,null",
+  "--enable-parser=h264,aac,hevc",
+  "--enable-decoder=h264,aac,hevc",
+  "--enable-encoder=wrapped_avframe,pcm_s16le",
+  "--enable-filter=null,anull",
+  "--enable-bsf=aac_adtstoasc,extract_extradata"
+]

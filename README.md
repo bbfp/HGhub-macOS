@@ -1,13 +1,27 @@
 <div align="center">
 
-# HGhub
+# HGhub macOS
 
 **黄果短剧第三方客户端 · Rust + Tauri 2**
 
-Windows / Android 双端 · Fluent 设计 · 沉浸式竖屏播放
+macOS（Apple Silicon）/ Windows / Android · Fluent 设计 · 沉浸式竖屏播放
 ![alt text](docs/image.png)
 
 </div>
+
+本项目基于 [Minireel/HGhub](https://github.com/Minireel/HGhub) 的 v1.0.1 源码（提交 `e4ab246f0ff8d3d68da97130b515998ea57d93fb`），增加 Apple Silicon macOS 适配和本地下载能力。原有 Windows/Android 代码保留；本分支主要验证 macOS，其他平台未新增运行验收。
+
+许可基线为上述固定提交的 [MIT LICENSE](https://github.com/Minireel/HGhub/blob/e4ab246f0ff8d3d68da97130b515998ea57d93fb/LICENSE)。上游从 v1.1.0 起改用 PolyForm Noncommercial，且其 [变更说明](https://github.com/Minireel/HGhub/commit/d54ad6ff7a6e0a7d314a9615717b835fad760228) 明确 v1.0.1 及更早版本仍按 MIT 授权；本分支没有合入该后续版本。
+
+使用说明见 [macOS 开始使用](docs/macos/START-HERE.md)，开发环境和 FFmpeg 准备见 [构建说明](docs/macos/BUILD.md)，实际测试范围见 [验证记录](docs/macos/VALIDATION.md)。完成依赖准备后运行 `pnpm macos:build` 生成 `.app` 和 `.dmg`。
+
+## macOS 新增功能
+
+- 逐集勾选下载和“整剧全选”，下载时可覆盖保存目录；“我的”页面可设置默认目录。
+- 全局任务、同剧集数、每集分片三层并发可手动配置，默认 **5 / 3 / 4**，默认配置下最多同时下载 20 个分片。
+- 下载任务持久化，支持暂停、继续、取消、失败重试和退出后恢复；完成文件保存为 MP4，可离线播放。
+- 封面磁盘缓存，减少重复请求；兼容旧版 `drama-ID` 目录，新任务可使用 `drama-ID-名字`。
+- 可编辑备用域名列表；登录、授权读取、下载地址刷新和站点资源共用域名切换逻辑。
 
 > ⚠️ 本项目仅供 **学习与技术交流**，不提供、不存储、不分发任何音视频内容。
 > 所有内容均来自第三方站点，请自行判断合规性，并在 24 小时内删除相关资源。
@@ -108,3 +122,10 @@ cd src-tauri/gen/android
 
 ## LinuxDO
 https://linux.do/
+
+
+## 致谢
+
+感谢 [Minireel/HGhub](https://github.com/Minireel/HGhub) 及其贡献者提供原始客户端、界面、接口实现和项目基础。本仓库是在其基础上的 macOS 适配与下载功能扩展，保留上游提交历史及原始 [MIT License](LICENSE)。
+
+同时感谢 [Tauri](https://github.com/tauri-apps/tauri)、[React](https://github.com/facebook/react)、[hls.js](https://github.com/video-dev/hls.js) 和 [FFmpeg](https://github.com/FFmpeg/FFmpeg) 等项目。FFmpeg 采用独立许可证，构建配置、来源和许可证记录见 [third-party](docs/macos/third-party/)。

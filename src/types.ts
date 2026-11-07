@@ -133,3 +133,52 @@ export type User = {
     like_video_episodes: { video_id: number; ep: number }[];
   };
 };
+
+export type DownloadSettings = {
+  schema_version: number;
+  root_dir: string;
+    max_tasks: number;
+    max_episodes_per_drama: number;
+    max_segments_per_episode: number;
+};
+
+export type DomainProbe = {
+  domain: string;
+  ok: boolean;
+  status: number | null;
+  elapsed_ms: number;
+  error: string | null;
+};
+
+export type NetworkSettingsView = {
+  schema_version: number;
+  domains: string[];
+  active_domain: string;
+  warning: string | null;
+  probes: DomainProbe[];
+};
+
+export type NetworkTestResult = {
+  probes: DomainProbe[];
+  first_working: string | null;
+};
+
+export type DownloadStatus = "queued" | "downloading" | "paused" | "cancelled" | "failed" | "completed";
+
+export type DownloadTask = {
+  schema_version: number;
+  id: string;
+  drama_id: number;
+  drama_title: string;
+  episode: number;
+  episode_title: string;
+  source_url: string;
+  root_dir: string;
+  status: DownloadStatus;
+  progress: number;
+  total_segments: number;
+  completed_segments: unknown[];
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+};

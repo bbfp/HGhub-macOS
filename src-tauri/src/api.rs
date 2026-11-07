@@ -7,12 +7,14 @@ use tauri::State;
 
 pub struct Api {
     pub session: SessionStore,
+    pub downloads: crate::downloads::DownloadManager,
 }
 
 impl Api {
     pub fn new() -> Self {
         Self {
             session: SessionStore::new(),
+            downloads: crate::downloads::DownloadManager::new(crate::downloads::DEFAULT_MAX_TASKS),
         }
     }
 
@@ -36,8 +38,7 @@ impl Api {
 /// 诊断用：把前端自检结果写到应用数据目录 debug.log
 #[tauri::command]
 pub async fn debug_log(app: tauri::AppHandle, msg: String) -> Result<(), String> {
-    use tauri::Manager;
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = crate::data_dir(&app)?;
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("debug.log");
     use std::io::Write;
@@ -61,6 +62,7 @@ pub async fn app_boot(state: State<'_, Api>) -> Result<Value, String> {
         "user": state.session.user(),
         "logged_in": state.session.token().is_some(),
         "base": BASE,
+        "active_base": crate::network::current_domain(),
     }))
 }
 

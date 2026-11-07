@@ -10,6 +10,9 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
+    "macos:dev": "node scripts/macos.mjs dev",
+    "macos:build": "node scripts/macos.mjs build",
+    "test:platform": "node --experimental-strip-types --test scripts/tests/platform.test.ts",
     "android:init": "tauri android init",
     "android:icons": "node scripts/sync-android-icons.mjs",
     "android:dev": "tauri android dev",
@@ -17,6 +20,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "2.8.4",
     "clsx": "2.1.1",
     "hls.js": "1.6.15",
     "react": "19.2.6",

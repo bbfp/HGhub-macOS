@@ -4,7 +4,7 @@ version = "1.0.1"
 description = "HGhub · 黄果短剧客户端"
 authors = ["HGhub"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.90"
 
 [lib]
 name = "huangguo_client_lib"
@@ -12,6 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[features]
+macos-smoke = []
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -28,12 +31,15 @@ reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "charset",
 ] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process"] }
 aes = "0.8"
 base64 = "0.22"
 percent-encoding = "2"
 once_cell = "1"
 url = "2"
+m3u8-rs = "6.0.1"
+sha2 = "0.10.9"
+tauri-plugin-dialog = "2.8.4"
 
 [profile.release]
 panic = "abort"

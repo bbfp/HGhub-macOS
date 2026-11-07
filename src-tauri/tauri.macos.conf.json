@@ -1,0 +1,28 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "HGhub",
+        "width": 1200,
+        "height": 780,
+        "minWidth": 900,
+        "minHeight": 620,
+        "decorations": true,
+        "resizable": true,
+        "center": true
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "resources": {
+      "../.local/ffmpeg/runtime/bin/ffmpeg": "binaries/ffmpeg",
+      "../docs/macos/third-party/": "third-party/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-"
+    }
+  }
+}

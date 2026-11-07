@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, cover, fmt, fmtTime, mediaUrl, platform } from "../api";
+import { api, cover, fmt, fmtTime, mediaUrl, platform, siteUrl } from "../api";
 import type { Detail, Episode, Post, VideoCard } from "../types";
 import { useStore } from "../store";
 import { Avatar, Img, Sheet } from "./ui";
@@ -32,7 +32,7 @@ const stripHtml = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, "
 export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd }: Props) {
   const store = useStore();
   const { isLiked, isFav, toggleLikeLocal, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen } = store;
-  const isDesktop = platform === "windows";
+  const isDesktop = platform !== "android";
 
   const boxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<VideoHandle>(null);
@@ -444,6 +444,21 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     if (requireLogin()) api.follow(uid, on).catch(() => {});
   };
 
+  const enqueueEpisodes = async (selected: Episode[], rootDir?: string) => {
+    const results = await Promise.allSettled(selected.map((episode) => api.downloadEnqueue({
+      dramaId: curId,
+      dramaTitle: detail?.title || cards[curId]?.title || `短剧 ${curId}`,
+      episode: episode.ep_num,
+      episodeTitle: episode.title || `第 ${episode.ep_num} 集`,
+      sourceUrl: playUrls[`${curId}:${episode.ep_num}`] || "",
+      rootDir,
+      coverUrl: detail?.cover || cards[curId]?.cover,
+    })));
+    const failed = results.filter((result) => result.status === "rejected");
+    if (failed.length) throw new Error(`已加入 ${results.length - failed.length} 集，${failed.length} 集未加入，可重试：${String((failed[0] as PromiseRejectedResult).reason)}`);
+    toast(`已加入 ${selected.length} 集，可在“我的”查看下载`, "ok");
+  };
+
   const pickEp = (ep: number) => {
     setEpMap((m) => ({ ...m, [curId]: ep }));
     setPanel(null);
@@ -585,7 +600,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                 )}
 
                 <button onClick={() => {
-                  const u = kind === "post" ? (posts[curId]?.video_url || meta.title) : `https://huangguoai.com/video/${curId}/`;
+                  const u = kind === "post" ? (posts[curId]?.video_url || meta.title) : siteUrl(`/video/${curId}/`);
                   navigator.clipboard?.writeText(u).then(() => toast("链接已复制", "ok")).catch(() => {});
                 }} className="flex flex-col items-center gap-1 pressable">
                   <ILink size={25} className="text-white tsh" />
@@ -769,7 +784,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         <div className={`desktop-dock-panel ${panel ? "is-open" : ""}`}>
           <div className="desktop-dock-inner">
             {panel === "episodes" ? (
-              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
+              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} onDownload={platform === "macos" ? enqueueEpisodes : undefined} />
             ) : panel === "comments" ? (
               <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
             ) : null}
@@ -779,7 +794,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         <Sheet open={panel !== null} onClose={() => setPanel(null)}>
           <div className="flex flex-col h-full" style={{ height: "72vh" }}>
             {panel === "episodes" ? (
-              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
+              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} onDownload={platform === "macos" ? enqueueEpisodes : undefined} />
             ) : (
               <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
             )}

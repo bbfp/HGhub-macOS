@@ -1,7 +1,7 @@
-import { LOCAL } from "./api";
+import { currentSiteOrigin, LOCAL } from "./api";
 
 /** 站点根地址：正文里的相对路径要补全 */
-const SITE = "https://huangguoai.com";
+const SITE = () => currentSiteOrigin();
 
 /** 把各种写法的图片地址补成绝对地址；占位符（data:）返回空串 */
 function abs(raw: string): string {
@@ -10,8 +10,8 @@ function abs(raw: string): string {
   if (/^data:/i.test(s)) return "";
   if (s.startsWith("//")) return `https:${s}`;
   if (/^https?:\/\//i.test(s)) return s;
-  if (s.startsWith("/")) return `${SITE}${s}`;
-  return `${SITE}/${s.replace(/^\.\//, "")}`;
+  if (s.startsWith("/")) return `${SITE()}${s}`;
+  return `${SITE()}/${s.replace(/^\.\//, "")}`;
 }
 
 /** 把正文里的图片换成走本地协议（带 Referer / 解密能力） */

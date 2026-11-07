@@ -1,38 +1,72 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fmt } from "../api";
+import { open } from "@tauri-apps/plugin-dialog";
 import type { Comment, CommentPage, Episode } from "../types";
 import { useStore } from "../store";
 import { Avatar, Empty } from "./ui";
-import { IClose, IHeart, ISendF } from "../icons";
+import { IClose, IDownload, IHeart, ISendF } from "../icons";
 
 /* ================= 选集 ================= */
-export function EpisodesPanel({ videoId, episodes, current, onPick, onClose }: {
+export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, onDownload }: {
   videoId: number; episodes: Episode[]; current: number; onPick: (ep: number) => void; onClose: () => void;
+  onDownload?: (episodes: Episode[], rootDir?: string) => Promise<void>;
 }) {
+  const { toast } = useStore();
   const [asc, setAsc] = useState(true);
+  const [downloadMode, setDownloadMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set([current]));
+  const [root, setRoot] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  useEffect(() => { setDownloadMode(false); setSelected(new Set([current])); }, [videoId]);
   const list = asc ? episodes : [...episodes].reverse();
+  const enterDownloads = async () => {
+    setDownloadMode(true);
+    try { setRoot((await api.downloadSettings()).root_dir); }
+    catch (error) { toast(String(error), "info"); }
+  };
+  const chooseRoot = async () => {
+    setChoosing(true);
+    try { const path = await open({ directory: true, multiple: false }); if (typeof path === "string") setRoot(path); }
+    catch (error) { toast(String(error), "info"); }
+    finally { setChoosing(false); }
+  };
+  const submit = async () => {
+    if (!onDownload || !selected.size || busy || choosing) return;
+    setBusy(true);
+    try { await onDownload(episodes.filter((episode) => selected.has(episode.ep_num)), root || undefined); }
+    catch (error) { toast(String(error), "info"); }
+    finally { setBusy(false); }
+  };
   return (
     <div className="flex flex-col h-full">
       <div className="shrink-0 flex items-center gap-2 px-4 h-12">
-        <span className="text-[13.5px] font-bold text-on">选集</span>
+        <span className="text-[13.5px] font-bold text-on">{downloadMode ? "选择下载集数" : "选集"}</span>
         <span className="text-[10.5px] text-mut">共 {episodes.length} 集</span>
-        <button onClick={() => setAsc((v) => !v)} className="ml-auto text-[11px] text-primary pressable">{asc ? "倒序" : "正序"}</button>
-        <button onClick={onClose} aria-label="关闭" className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
-          <IClose size={13} />
-        </button>
+        {onDownload && <button onClick={() => downloadMode ? setDownloadMode(false) : void enterDownloads()} disabled={busy} className="ml-auto flex items-center gap-1 text-[11px] text-primary pressable disabled:opacity-50"><IDownload size={13} />{downloadMode ? "返回播放" : "下载"}</button>}
+        <button onClick={() => setAsc((value) => !value)} className={`${onDownload ? "" : "ml-auto"} text-[11px] text-primary pressable`}>{asc ? "倒序" : "正序"}</button>
+        <button onClick={onClose} aria-label="关闭" className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable"><IClose size={13} /></button>
       </div>
+      {downloadMode && <div className="shrink-0 px-4 pb-3 flex items-center gap-4 text-[11px]">
+        <span className="text-mut flex-1">已选 {selected.size} 集</span>
+        <button disabled={busy} onClick={() => setSelected(new Set(episodes.map((episode) => episode.ep_num)))} className="text-primary pressable">整剧全选</button>
+        <button disabled={busy} onClick={() => setSelected(new Set())} className="text-primary pressable">清空</button>
+      </div>}
       <div className="flex-1 scroll-y px-4 pb-4">
         <div className="grid grid-cols-4 gap-2">
-          {list.map((e) => (
-            <button key={e.ep_num} onClick={() => onPick(e.ep_num)}
-              className={`h-10 rounded-(--r-sm) text-[12px] font-semibold pressable ${e.ep_num === current ? "bg-primary text-on-primary" : "bg-s3 text-on/80"}`}>
-              {e.ep_num}
-            </button>
-          ))}
+          {list.map((episode) => {
+            const on = downloadMode ? selected.has(episode.ep_num) : episode.ep_num === current;
+            return <button key={episode.ep_num} disabled={busy} aria-label={`${downloadMode ? "选择下载" : "播放"}第 ${episode.ep_num} 集`} aria-pressed={on}
+              onClick={() => { if (!downloadMode) { onPick(episode.ep_num); return; } setSelected((previous) => { const next = new Set(previous); if (next.has(episode.ep_num)) next.delete(episode.ep_num); else next.add(episode.ep_num); return next; }); }}
+              className={`h-10 rounded-(--r-sm) text-[12px] font-semibold pressable disabled:opacity-50 ${on ? "bg-primary text-on-primary" : "bg-s3 text-on/80"}`}>{downloadMode && on ? "✓ " : ""}{episode.ep_num}</button>;
+          })}
         </div>
         {!episodes.length && <div className="text-center text-[11.5px] text-dim py-8">暂无剧集</div>}
       </div>
-      <div className="shrink-0 px-4 py-2.5 text-[10.5px] text-dim bg-s2/60">剧集 ID {videoId} · 点选即切换播放</div>
+      {downloadMode ? <div className="shrink-0 px-4 py-3 bg-s2/60">
+        <div className="flex gap-2 items-center mb-3"><div className="flex-1 min-w-0 text-[10.5px] text-mut truncate" title={root}>{root || "使用默认下载地址"}</div><button disabled={busy || choosing} onClick={() => { void chooseRoot(); }} className="text-[11px] text-primary pressable">{choosing ? "选择中…" : "本次换地址"}</button></div>
+        <button onClick={() => { void submit(); }} disabled={busy || choosing || selected.size === 0} className="w-full h-10 rounded-(--r-ctl) bg-primary text-on-primary text-[12px] font-semibold pressable disabled:opacity-50">{busy ? "正在加入任务…" : `下载所选 ${selected.size} 集`}</button>
+      </div> : <div className="shrink-0 px-4 py-2.5 text-[10.5px] text-dim bg-s2/60">剧集 ID {videoId} · 点选即切换播放</div>}
     </div>
   );
 }

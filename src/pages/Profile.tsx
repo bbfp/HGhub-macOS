@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, APP_VERSION, cover, fmt, logLine, platform } from "../api";
+import { api, APP_VERSION, fmt, logLine, platform, siteUrl } from "../api";
 import type { Detail, User } from "../types";
 import { useStore } from "../store";
 import { Avatar, Empty, Img, Modal, Toggle } from "../components/ui";
+import Downloads from "../components/Downloads";
+import NetworkSettings from "../components/NetworkSettings";
 import { IBroom, IChevR, IClock, IHeart, IInfo, ILink, ILogout, IMoon, IStar, ISun, IUser, IUserF } from "../icons";
 
 export default function Profile({ wide }: { wide: boolean }) {
@@ -19,7 +21,6 @@ export default function Profile({ wide }: { wide: boolean }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const ids = tab === "fav" ? favs : history;
 
   useEffect(() => {
@@ -106,6 +107,8 @@ export default function Profile({ wide }: { wide: boolean }) {
               <li>· 发表评论与回复</li>
             </ul>
           </div>
+          {platform === "macos" && <NetworkSettings />}
+          {platform === "macos" && <Downloads />}
         </div>
       </div>
     );
@@ -190,6 +193,8 @@ export default function Profile({ wide }: { wide: boolean }) {
             </div>
           </div>
         </div>
+        {platform === "macos" && <NetworkSettings />}
+        {platform === "macos" && <Downloads />}
 
         {/* 关于 / 缓存 */}
         <div className="mt-3 rounded-(--r-md) bg-s2 divide-y divide-white/5">
@@ -229,7 +234,7 @@ export default function Profile({ wide }: { wide: boolean }) {
           </button>
         </div>
 
-        <div className="text-center text-[10px] text-dim mt-5">HGhub {APP_VERSION} · {platform === "android" ? "Android" : "Windows"} 客户端</div>
+        <div className="text-center text-[10px] text-dim mt-5">HGhub {APP_VERSION} · {platform === "android" ? "Android" : platform === "macos" ? "macOS" : "Windows"} 客户端</div>
 
         <Modal open={about} onClose={() => setAbout(false)} width={392}>
           <div className="p-5">
@@ -242,12 +247,12 @@ export default function Profile({ wide }: { wide: boolean }) {
             </div>
 
             <p className="text-[12px] text-on/70 leading-relaxed mt-4">
-              基于 Rust + Tauri 2 构建的跨平台客户端，支持 Windows 与 Android。
+              基于 Rust + Tauri 2 构建的跨平台客户端，支持 macOS、Windows 与 Android。
               界面遵循 Fluent 设计语言，播放器采用沉浸式竖屏信息流。
             </p>
 
             <div className="mt-4 rounded-(--r-sm) bg-s3/60 p-3 text-[11px] text-mut leading-relaxed">
-              本项目仅供学习与交流，所有内容均来自上游站点，客户端不存储、不分发任何视频内容。
+              本项目仅供学习与交流，所有内容均来自上游站点，下载的内容保存在你选择的本机目录中。
               请于 24 小时内删除相关资源，并支持正版。
             </div>
 
@@ -258,10 +263,10 @@ export default function Profile({ wide }: { wide: boolean }) {
                 <span className="text-[12px] text-on/85">github.com/Minireel/HGhub</span>
                 <span className="ml-auto text-[10.5px] text-primary">复制</span>
               </button>
-              <button onClick={() => { navigator.clipboard?.writeText("https://huangguoai.com").then(() => toast("站点地址已复制", "ok")).catch(() => {}); }}
+              <button onClick={() => { navigator.clipboard?.writeText(siteUrl()).then(() => toast("站点地址已复制", "ok")).catch(() => {}); }}
                 className="w-full flex items-center gap-2 py-2.5 text-left pressable">
                 <ILink size={15} className="text-mut" />
-                <span className="text-[12px] text-on/85">huangguoai.com</span>
+                <span className="text-[12px] text-on/85">{siteUrl().replace(/^https:\/\//, "")}</span>
                 <span className="ml-auto text-[10.5px] text-primary">复制</span>
               </button>
             </div>

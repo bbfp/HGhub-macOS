@@ -1,0 +1,10 @@
+{
+  "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/refs/tags/n8.1",
+  "proxy": "existing system HTTP proxy",
+  "exit": 0,
+  "bytes": 16854293,
+  "sha256": "dd308201bb1239a1b73185f80c6b4121f4efdfa424a009ce544fd00bf736bb2e",
+  "dirs": [
+    "FFmpeg-n8.1"
+  ]
+}

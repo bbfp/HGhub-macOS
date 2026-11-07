@@ -11,7 +11,7 @@ import {
 const appWindow = () => getCurrentWindow();
 
 export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { theme, setTheme, setTab } = useStore();
+  const { theme, setTheme, setTab, platform } = useStore();
   const [maxed, setMaxed] = useState(false);
 
   useEffect(() => {
@@ -39,19 +39,19 @@ export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
       <button className="win-caption-tool" aria-label="搜索" onClick={() => setTab("search")}>
         <ISearch size={17} strokeWidth={1.7} />
       </button>
-      <div className="win-caption-buttons">
+      {platform === "windows" && <div className="win-caption-buttons">
         <button aria-label="最小化" onClick={() => appWindow().minimize().catch(() => {})}><IMinus size={15} strokeWidth={1.5} /></button>
         <button aria-label={maxed ? "还原" : "最大化"} onClick={() => appWindow().toggleMaximize().catch(() => {})}>
           {maxed ? <IRestore size={14} strokeWidth={1.5} /> : <ISquare size={14} strokeWidth={1.5} />}
         </button>
         <button className="win-close" aria-label="关闭" onClick={() => appWindow().close().catch(() => {})}><IClose size={16} strokeWidth={1.5} /></button>
-      </div>
+      </div>}
     </header>
   );
 }
 
 export function WindowsRail({ collapsed }: { collapsed: boolean }) {
-  const { tab, setTab, user, setLoginOpen, push } = useStore();
+  const { tab, setTab, user, setLoginOpen, push, platform } = useStore();
   const items: { key: Tab; label: string; Icon: typeof IHome; Filled: typeof IHomeF }[] = [
     { key: "home", label: "首页", Icon: IHome, Filled: IHomeF },
     { key: "category", label: "分类", Icon: IGrid, Filled: IGridF },
@@ -88,7 +88,7 @@ export function WindowsRail({ collapsed }: { collapsed: boolean }) {
               <small>{user ? "你的精彩，都在这里" : "留住每一次心动"}</small>
             </span>
           </button>
-          <span className="win-sidebar-version">HGhub for Windows {APP_VERSION}</span>
+          <span className="win-sidebar-version">HGhub for {platform === "macos" ? "macOS" : "Windows"} {APP_VERSION}</span>
         </div>
       </div>
     </nav>

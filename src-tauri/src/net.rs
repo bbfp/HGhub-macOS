@@ -25,7 +25,7 @@ use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
-pub const BASE: &str = "https://huangguoai.com";
+pub const BASE: &str = crate::network::PRIMARY_DOMAIN;
 
 pub const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -39,7 +39,7 @@ fn proxy_override() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-pub static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+fn build_client(api: bool) -> reqwest::Client {
     let mut builder = reqwest::Client::builder()
         .user_agent(UA)
         .timeout(Duration::from_secs(20))
@@ -47,14 +47,40 @@ pub static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
         .gzip(true)
         .brotli(true)
         .pool_idle_timeout(Duration::from_secs(60));
+    if api {
+        // Do not let 307/308 redirects forward login bodies to another origin.
+        // Media/CDN redirects continue to use the existing client behavior.
+        builder = builder
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(5));
+    }
     if let Some(p) = proxy_override() {
         match reqwest::Proxy::all(&p) {
             Ok(proxy) => builder = builder.proxy(proxy),
-            Err(e) => eprintln!("[net] 忽略无效的 HGHUB_PROXY={p}: {e}"),
+            Err(_) => eprintln!("[net] 忽略无效的 HGHUB_PROXY：代理地址格式无效"),
         }
     }
     builder.build().expect("build http client")
-});
+}
+
+pub static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| build_client(false));
+pub(crate) static API_CLIENT: Lazy<reqwest::Client> =
+    Lazy::new(|| build_client(cfg!(target_os = "macos")));
+
+fn redact_proxy(value: &str) -> String {
+    match url::Url::parse(value) {
+        Ok(mut url) if url.has_host() => {
+            let _ = url.set_password(None);
+            let _ = url.set_username("");
+            url.to_string()
+        }
+        _ => "[已设置，地址格式无效]".into(),
+    }
+}
+
+fn proxy_env(name: &str) -> Option<String> {
+    std::env::var(name).ok().map(|value| redact_proxy(&value))
+}
 
 /// reqwest 的 `Display` 只有「error sending request for url (...)」，
 /// 真正的原因（dns error / connection refused / invalid peer certificate）
@@ -75,7 +101,8 @@ pub fn err_text(e: &reqwest::Error) -> String {
 
 /// 网络自检：DNS / HTTP / 代理相关环境变量，用于远程定位「打不开」。
 pub async fn diagnose() -> Value {
-    let host = url::Url::parse(BASE)
+    let active = crate::network::current_domain();
+    let host = url::Url::parse(&active)
         .ok()
         .and_then(|u| u.host_str().map(|h| h.to_string()))
         .unwrap_or_default();
@@ -95,7 +122,7 @@ pub async fn diagnose() -> Value {
     };
 
     let started = Instant::now();
-    let http = match CLIENT.get(format!("{BASE}/")).send().await {
+    let http = match API_CLIENT.get(format!("{active}/")).send().await {
         Ok(r) => json!({
             "status": r.status().as_u16(),
             "ms": started.elapsed().as_millis() as u64,
@@ -108,137 +135,290 @@ pub async fn diagnose() -> Value {
 
     json!({
         "base": BASE,
+        "active_base": active,
+        "network": crate::network::settings_view(),
         "host": host,
         "dns": dns,
         "http": http,
         "env": {
-            "HTTP_PROXY": std::env::var("HTTP_PROXY").ok(),
-            "HTTPS_PROXY": std::env::var("HTTPS_PROXY").ok(),
-            "ALL_PROXY": std::env::var("ALL_PROXY").ok(),
+            "HTTP_PROXY": proxy_env("HTTP_PROXY"),
+            "HTTPS_PROXY": proxy_env("HTTPS_PROXY"),
+            "ALL_PROXY": proxy_env("ALL_PROXY"),
             "NO_PROXY": std::env::var("NO_PROXY").ok(),
-            "HGHUB_PROXY": proxy_override(),
+            "HGHUB_PROXY": proxy_override().map(|value| redact_proxy(&value)),
         },
     })
 }
 
-/// 站点偶发 TLS 抖动（实测），统一重试。
-async fn with_retry<F, Fut, T>(mut f: F) -> Result<T, String>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, String>>,
-{
-    let mut last = String::from("network error");
-    for attempt in 0..3 {
-        match f().await {
-            Ok(v) => return Ok(v),
-            Err(e) => {
-                last = e;
-                if attempt < 2 {
-                    tokio::time::sleep(Duration::from_millis(350 * (attempt as u64 + 1))).await;
-                }
+/// Failures carry a retry decision separately from their display text.
+#[derive(Debug)]
+pub(crate) struct EdgeFailure {
+    pub message: String,
+    pub status: Option<u16>,
+    retryable: bool,
+}
+impl EdgeFailure {
+    fn transport(error: reqwest::Error, status: Option<u16>, method: &str) -> Self {
+        let unknown_write = method != "GET" && !error.is_connect() && !error.is_builder();
+        let message = if unknown_write {
+            format!("提交结果未知，请刷新确认后再操作。{}", err_text(&error))
+        } else {
+            err_text(&error)
+        };
+        Self {
+            message,
+            status,
+            retryable: if method == "GET" {
+                !error.is_builder() && !error.is_redirect()
+            } else {
+                error.is_connect()
+            },
+        }
+    }
+    fn terminal(message: String, status: Option<u16>) -> Self {
+        Self {
+            message,
+            status,
+            retryable: false,
+        }
+    }
+}
+
+pub(crate) struct EdgeResponse {
+    pub status: u16,
+    pub data: Value,
+}
+
+pub(crate) async fn edge_once(
+    client: &reqwest::Client,
+    domain: &str,
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+    token: Option<&str>,
+) -> Result<EdgeResponse, EdgeFailure> {
+    let (encoded, ctype) = match body {
+        Some(value) => (
+            B64.encode(
+                serde_json::to_vec(value)
+                    .map_err(|error| EdgeFailure::terminal(error.to_string(), None))?,
+            ),
+            "application/json",
+        ),
+        None => (String::new(), ""),
+    };
+    let envelope = json!({"method": method, "path": path, "body": encoded, "content_type": ctype});
+    let mut request = client
+        .post(format!("{domain}/api/edge/request"))
+        .header("Accept", "application/json")
+        .header("Referer", format!("{domain}/"))
+        .json(&envelope);
+    if let Some(token) = token.filter(|token| !token.is_empty()) {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
+    if cfg!(target_os = "macos") && (method == "GET" || path.ends_with("loginByPassword")) {
+        request = request.timeout(Duration::from_secs(10));
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|error| EdgeFailure::transport(error, None, method))?;
+    let status = response.status();
+    if !status.is_success() {
+        let retryable = match status.as_u16() {
+            300..=399 => method == "GET" || path.ends_with("loginByPassword"),
+            500..=599 => method == "GET" || path.ends_with("loginByPassword"),
+            401 | 403 => token.is_some(),
+            _ => false,
+        };
+        let message =
+            if method != "GET" && status.is_server_error() && !path.ends_with("loginByPassword") {
+                format!("提交结果未知，请刷新确认后再操作。HTTP {status}")
+            } else if matches!(status.as_u16(), 401 | 403) {
+                "401".into()
+            } else {
+                format!("HTTP {status}")
+            };
+        return Err(EdgeFailure {
+            message,
+            status: Some(status.as_u16()),
+            retryable,
+        });
+    }
+    let text = response
+        .text()
+        .await
+        .map_err(|error| EdgeFailure::transport(error, Some(status.as_u16()), method))?;
+    let data = if text.trim().is_empty() && method != "GET" {
+        Value::Null
+    } else {
+        // Do not log raw response bodies: account responses may contain tokens.
+        let value: Value = match serde_json::from_str(&text) {
+            Ok(value) => value,
+            Err(error) if method == "GET" => {
+                return Err(EdgeFailure {
+                    message: format!("接口未返回有效 JSON：{error}"),
+                    status: Some(status.as_u16()),
+                    retryable: true,
+                });
+            }
+            Err(error) => {
+                return Err(EdgeFailure::terminal(
+                    format!("接口未返回有效 JSON：{error}"),
+                    Some(status.as_u16()),
+                ))
+            }
+        };
+        if value.get("status").and_then(Value::as_i64) != Some(1) {
+            return Err(EdgeFailure::terminal(
+                value
+                    .get("msg")
+                    .and_then(Value::as_str)
+                    .filter(|message| !message.is_empty())
+                    .unwrap_or("接口返回失败")
+                    .to_string(),
+                Some(status.as_u16()),
+            ));
+        }
+        value.get("data").cloned().unwrap_or(Value::Null)
+    };
+    Ok(EdgeResponse {
+        status: status.as_u16(),
+        data,
+    })
+}
+
+async fn edge_at(
+    client: &reqwest::Client,
+    domains: &[String],
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+    token: Option<&str>,
+    mut on_probe: impl FnMut(crate::network::DomainProbe),
+) -> Result<Value, String> {
+    let count = domains.len();
+    let mut last = String::from("没有可用的 API 域名");
+    for domain in domains.iter().take(count) {
+        let started = Instant::now();
+        let result = edge_once(client, domain, method, path, body, token).await;
+        on_probe(crate::network::DomainProbe {
+            domain: domain.clone(),
+            ok: result.is_ok(),
+            status: result
+                .as_ref()
+                .map(|reply| Some(reply.status))
+                .unwrap_or_else(|error| error.status),
+            elapsed_ms: started.elapsed().as_millis() as u64,
+            error: result.as_ref().err().map(|error| error.message.clone()),
+        });
+        match result {
+            Ok(reply) => return Ok(reply.data),
+            Err(error) if !error.retryable => return Err(error.message),
+            Err(error) => {
+                last = if token.is_some() && matches!(error.status, Some(401 | 403)) {
+                    format!("{domain}：账号在此域名不可用")
+                } else {
+                    format!("{domain}：{}", error.message)
+                };
             }
         }
     }
-    Err(last)
+    Err(format!("已尝试 {count} 个 API 域名，均未连接成功。{last}"))
 }
 
-/// 业务请求：走边缘信封。
+/// Every configured site origin is a candidate. A request that has not reached
+/// a server may move to the next origin; ambiguous writes stop with an unknown
+/// result so the app never duplicates a mutation.
 pub async fn edge(
     method: &str,
     path: &str,
     body: Option<Value>,
     token: Option<&str>,
 ) -> Result<Value, String> {
-    let (encoded, ctype) = match &body {
-        Some(v) => (
-            B64.encode(serde_json::to_vec(v).map_err(|e| e.to_string())?),
-            "application/json",
-        ),
-        None => (String::new(), ""),
-    };
-    let envelope = json!({
-        "method": method,
-        "path": path,
-        "body": encoded,
-        "content_type": ctype,
-    });
+    let domains = crate::network::request_domains(true);
+    edge_at(
+        &API_CLIENT,
+        &domains,
+        method,
+        path,
+        body.as_ref(),
+        token,
+        |probe| crate::network::record_probe(probe, true),
+    )
+    .await
+}
 
-    let url = format!("{BASE}/api/edge/request");
-    let token = token.map(|s| s.to_string());
-
-    let value = with_retry(|| {
-        let envelope = envelope.clone();
-        let token = token.clone();
-        let url = url.clone();
-        async move {
-            let mut req = CLIENT
-                .post(&url)
-                .header("Accept", "application/json")
-                .header("Referer", format!("{BASE}/"))
-                .json(&envelope);
-            if let Some(t) = token.as_deref() {
-                if !t.is_empty() {
-                    req = req.header("Authorization", format!("Bearer {t}"));
-                }
-            }
-            let resp = req.send().await.map_err(|e| err_text(&e))?;
-            let status = resp.status();
-            let text = resp.text().await.map_err(|e| err_text(&e))?;
-            if status.as_u16() == 401 || status.as_u16() == 403 {
-                return Err("401".to_string());
-            }
-            if !status.is_success() {
-                return Err(format!("HTTP {status}: {}", &text[..text.len().min(160)]));
-            }
-            if text.trim().is_empty() {
-                return Ok(Value::Null);
-            }
-            serde_json::from_str::<Value>(&text).map_err(|e| format!("{e}: {}", &text[..text.len().min(160)]))
-        }
-    })
-    .await?;
-
-    if value.is_null() {
-        return Ok(Value::Null);
-    }
-
-    if value.get("status").and_then(|v| v.as_i64()) == Some(1) {
-        Ok(value.get("data").cloned().unwrap_or(Value::Null))
-    } else {
-        Err(value
-            .get("msg")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("接口返回失败")
-            .to_string())
-    }
+/// Used by background downloads, which need the current persisted session
+/// without copying a token into a task or receipt.
+pub async fn edge_current(method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
+    let token = crate::network::session_token();
+    edge(method, path, body, token.as_deref()).await
 }
 
 /// 拉原始字节（图片 / m3u8 / 分片）。
 pub async fn fetch_bytes(url: &str) -> Result<(Option<String>, Vec<u8>), String> {
-    let url = url.to_string();
-    with_retry(|| {
-        let url = url.clone();
-        async move {
-            let resp = CLIENT
-                .get(&url)
-                .header("Referer", format!("{BASE}/"))
-                .send()
-                .await
-                .map_err(|e| err_text(&e))?;
-            if !resp.status().is_success() {
-                return Err(format!("HTTP {}", resp.status()));
+    fetch_bytes_routed(url).await
+}
+
+pub async fn fetch_bytes_routed(raw_url: &str) -> Result<(Option<String>, Vec<u8>), String> {
+    let site_url = crate::network::is_site_origin(raw_url);
+    let candidates = crate::network::routed_urls(raw_url, true);
+    let mut last = String::from("网络请求失败");
+    // Media may legitimately redirect to a CDN. It never carries the API
+    // bearer token, so it uses the redirect-following media client.
+    let client = &*CLIENT;
+    for (origin, url) in candidates {
+        let referer = crate::network::referer_for(&origin);
+        let mut attempts = if site_url { 1 } else { 3 };
+        while attempts > 0 {
+            attempts -= 1;
+            let request = client.get(&url).header("Referer", &referer);
+            match request.send().await {
+                Ok(response) if response.status().is_success() => {
+                    let ctype = response
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_owned);
+                    let bytes = match response.bytes().await {
+                        Ok(bytes) => bytes.to_vec(),
+                        Err(error) => {
+                            last = err_text(&error);
+                            continue;
+                        }
+                    };
+                    if site_url {
+                        crate::network::record_probe(
+                            crate::network::DomainProbe {
+                                domain: origin.clone(),
+                                ok: true,
+                                status: Some(200),
+                                elapsed_ms: 0,
+                                error: None,
+                            },
+                            true,
+                        );
+                    }
+                    return Ok((ctype, bytes));
+                }
+                Ok(response) => {
+                    let status = response.status();
+                    last = format!("HTTP {status}");
+                    if status.is_client_error() {
+                        return Err(last);
+                    }
+                }
+                Err(error) => {
+                    last = err_text(&error);
+                    if site_url || attempts == 0 {
+                        break;
+                    }
+                }
             }
-            let ctype = resp
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string());
-            let bytes = resp.bytes().await.map_err(|e| err_text(&e))?.to_vec();
-            Ok((ctype, bytes))
         }
-    })
-    .await
+    }
+    Err(last)
 }
 
 #[cfg(test)]
@@ -248,6 +428,7 @@ mod tests {
     /// 手动跑：`cargo test --lib net::tests::diag -- --nocapture`
     /// 关掉 TUN、只留系统代理时跑一遍，能直接看出客户端有没有走代理。
     #[tokio::test]
+    #[ignore = "manual network diagnostic"]
     async fn diag() {
         println!(
             "{}",
@@ -255,3 +436,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "net_tests.rs"]
+mod failover_tests;
