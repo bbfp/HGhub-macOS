@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { detectPlatform, mediaBase } from "./platform";
 import type {
-  CommentPage, Detail, DownloadSettings, DownloadTask, NetworkSettingsView, NetworkTestResult, Paged, PlayInfo, Post, RankItem, User, VideoCard,
+  CommentPage, Detail, DownloadSettings, DownloadTask, LibraryDrama, LibraryPage, LibraryUpdate, NetworkSettingsView, NetworkTestResult, Paged, PlayInfo, Post, RankItem, User, VideoCard,
 } from "./types";
 
 /* ── 运行环境 ───────────────────────────────────────────── */
@@ -24,6 +24,7 @@ export const cover = (url?: string, _w = 480) =>
 /** 播放列表：经本地协议改写分片地址，规避 CORS 与防盗链。 */
 export const playlist = (url: string) => `${LOCAL}/hls?u=${encodeURIComponent(url)}`;
 export const localFile = (path: string) => `${LOCAL}/file?u=${encodeURIComponent(path)}`;
+export const localImage = (path: string) => `${LOCAL}/local-img?u=${encodeURIComponent(path)}`;
 
 /* ── 调用封装 ───────────────────────────────────────────── */
 
@@ -97,6 +98,10 @@ export const api = {
   downloadPause: (id: string) => invoke<void>("download_pause", { id }),
   downloadResume: (id: string) => invoke<void>("download_resume", { id }),
   downloadCancel: (id: string) => invoke<void>("download_cancel", { id }),
+  downloadLibraryPage: (cursor?: string, limit = 20) =>
+    invoke<LibraryPage>("download_library_page", { cursor: cursor ?? null, limit }),
+  downloadLibraryUpdateCheck: (dramaIds?: number[]) =>
+    invoke<LibraryUpdate[]>("download_library_update_check", { dramaIds: dramaIds ?? null }),
   netDiag: () => invoke<Record<string, unknown>>("net_diag"),
   networkSettings: async () => {
     const result = await invoke<NetworkSettingsView>("network_settings");

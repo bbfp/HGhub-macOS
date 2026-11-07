@@ -1,6 +1,24 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
+async fn write_receipted_file(path: &Path, bytes: &[u8]) {
+    tokio::fs::create_dir_all(path.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(path, bytes).await.unwrap();
+    let receipt = serde_json::json!({
+        "schema_version": 1,
+        "byte_len": bytes.len(),
+        "sha256": hls::hash(bytes),
+    });
+    tokio::fs::write(
+        path.with_extension("json"),
+        serde_json::to_vec(&receipt).unwrap(),
+    )
+    .await
+    .unwrap();
+}
+
 fn test_dir(label: &str) -> PathBuf {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../.local/tests")
@@ -29,6 +47,70 @@ fn task(root: &Path, drama_id: i64, episode: u32, source_url: &str) -> DownloadT
         init_segment: None,
         cover_url: None,
     }
+}
+
+#[tokio::test]
+async fn library_groups_verified_files_and_paginates_by_drama() {
+    let dir = test_dir("library-page");
+    let tasks = vec![
+        task(&dir, 1, 1, ""),
+        task(&dir, 1, 2, ""),
+        task(&dir, 2, 1, ""),
+    ];
+    for item in &tasks {
+        let output = episode_path(&dir, item.drama_id, &item.drama_title, item.episode);
+        write_receipted_file(
+            &output,
+            format!("{}-{}", item.drama_id, item.episode).as_bytes(),
+        )
+        .await;
+    }
+    let first = library::build_page(&tasks, &dir, 0, 1).await.unwrap();
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].drama_id, 1);
+    assert_eq!(first.items[0].episodes.len(), 2);
+    assert_eq!(first.next_cursor.as_deref(), Some("1"));
+    let second = library::build_page(&tasks, &dir, 1, 1).await.unwrap();
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.items[0].drama_id, 2);
+    assert!(second.next_cursor.is_none());
+}
+
+#[tokio::test]
+async fn library_ignores_missing_or_bad_receipts_and_reads_legacy_directory() {
+    let dir = test_dir("library-compat");
+    let mut valid = task(&dir, 3, 1, "");
+    valid.drama_title = "".into();
+    let missing = task(&dir, 3, 2, "");
+    let bad = task(&dir, 3, 3, "");
+    write_receipted_file(&legacy_episode_path(&dir, 3, 1), b"legacy-video").await;
+    let bad_path = episode_path(&dir, 3, &bad.drama_title, bad.episode);
+    tokio::fs::create_dir_all(bad_path.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&bad_path, b"bad-video").await.unwrap();
+    tokio::fs::write(
+        bad_path.with_extension("json"),
+        br#"{"schema_version":1,"byte_len":999,"sha256":"wrong"}"#,
+    )
+    .await
+    .unwrap();
+    let page = library::build_page(&[valid, missing, bad], &dir, 0, 20)
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].drama_id, 3);
+    assert_eq!(page.items[0].episodes.len(), 1);
+    assert_eq!(page.items[0].episodes[0].episode, 1);
+}
+
+#[test]
+fn library_update_candidates_only_include_new_episode_numbers() {
+    assert_eq!(library::new_episode_numbers(&[1, 2, 5], &[1, 2]), vec![5]);
+    assert_eq!(
+        library::new_episode_numbers(&[1, 2], &[1, 2]),
+        Vec::<u32>::new()
+    );
 }
 
 #[tokio::test]

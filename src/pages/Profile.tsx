@@ -3,8 +3,8 @@ import { api, APP_VERSION, fmt, logLine, platform, siteUrl } from "../api";
 import type { Detail, User } from "../types";
 import { useStore } from "../store";
 import { Avatar, Empty, Img, Modal, Toggle } from "../components/ui";
-import Downloads from "../components/Downloads";
 import NetworkSettings from "../components/NetworkSettings";
+import DownloadLocationSettings from "../components/DownloadLocationSettings";
 import { IBroom, IChevR, IClock, IHeart, IInfo, ILink, ILogout, IMoon, IStar, ISun, IUser, IUserF } from "../icons";
 
 export default function Profile({ wide }: { wide: boolean }) {
@@ -107,8 +107,10 @@ export default function Profile({ wide }: { wide: boolean }) {
               <li>· 发表评论与回复</li>
             </ul>
           </div>
-          {platform === "macos" && <NetworkSettings />}
-          {platform === "macos" && <Downloads />}
+          {platform === "macos" && <>
+            <DownloadLocationSettings />
+            <NetworkSettings />
+          </>}
         </div>
       </div>
     );
@@ -193,8 +195,10 @@ export default function Profile({ wide }: { wide: boolean }) {
             </div>
           </div>
         </div>
-        {platform === "macos" && <NetworkSettings />}
-        {platform === "macos" && <Downloads />}
+        {platform === "macos" && <>
+          <DownloadLocationSettings />
+          <NetworkSettings />
+        </>}
 
         {/* 关于 / 缓存 */}
         <div className="mt-3 rounded-(--r-md) bg-s2 divide-y divide-white/5">

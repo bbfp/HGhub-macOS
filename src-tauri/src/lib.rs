@@ -30,7 +30,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Api::new())
         .setup(|app| {
-            if cfg!(target_os = "macos") { network::initialize(app.handle()); }
+            if cfg!(target_os = "macos") {
+                network::initialize(app.handle());
+            }
             network::bind_session_token(app.handle());
             if let Ok(resource_dir) = app.path().resource_dir() {
                 let bundled = resource_dir.join("binaries/ffmpeg");
@@ -96,6 +98,8 @@ pub fn run() {
             downloads::download_settings,
             downloads::download_settings_set,
             downloads::download_limits_set,
+            downloads::download_library_page,
+            downloads::download_library_update_check,
             downloads::download_local_path,
             downloads::download_tasks,
             downloads::download_warnings,

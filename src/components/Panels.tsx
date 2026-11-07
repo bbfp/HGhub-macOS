@@ -22,6 +22,7 @@ export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, onD
   const list = asc ? episodes : [...episodes].reverse();
   const enterDownloads = async () => {
     setDownloadMode(true);
+    setSelected(new Set(episodes.map((episode) => episode.ep_num)));
     try { setRoot((await api.downloadSettings()).root_dir); }
     catch (error) { toast(String(error), "info"); }
   };

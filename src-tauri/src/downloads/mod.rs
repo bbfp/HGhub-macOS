@@ -1,5 +1,6 @@
 //! Versioned local downloads. Tauri commands stay thin; the manager owns all task mutations.
 mod hls;
+pub mod library;
 mod manager;
 mod models;
 mod storage;
@@ -35,6 +36,123 @@ pub async fn load_settings(app: &AppHandle) -> Result<DownloadSettings, String> 
 
 pub async fn load_tasks(app: &AppHandle) -> Result<Vec<DownloadTask>, String> {
     app.state::<crate::api::Api>().downloads.tasks().await
+}
+
+async fn all_library_items(
+    tasks: &[DownloadTask],
+    root: &std::path::Path,
+) -> Result<Vec<library::LibraryDrama>, String> {
+    let mut cursor = 0;
+    let mut result = Vec::new();
+    loop {
+        let page = library::build_page(tasks, root, cursor, 50).await?;
+        let count = page.items.len();
+        result.extend(page.items);
+        let Some(next) = page.next_cursor else { break };
+        cursor = next.parse::<usize>().map_err(|_| "本地库游标无效")?;
+        if count == 0 {
+            break;
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn download_library_page(
+    app: AppHandle,
+    state: State<'_, crate::api::Api>,
+    cursor: Option<String>,
+    limit: Option<usize>,
+) -> Result<library::LibraryPage, String> {
+    if !cfg!(target_os = "macos") {
+        return Err("本地库目前仅支持 macOS 版".into());
+    }
+    let cursor = cursor.unwrap_or_default().parse::<usize>().unwrap_or(0);
+    let limit = limit.unwrap_or(20);
+    let settings = load_settings(&app).await?;
+    let tasks = state.downloads.tasks().await?;
+    library::build_page(
+        &tasks,
+        std::path::Path::new(&settings.root_dir),
+        cursor,
+        limit,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn download_library_update_check(
+    app: AppHandle,
+    state: State<'_, crate::api::Api>,
+    drama_ids: Option<Vec<i64>>,
+) -> Result<Vec<library::LibraryUpdate>, String> {
+    if !cfg!(target_os = "macos") {
+        return Err("本地库目前仅支持 macOS 版".into());
+    }
+    let settings = load_settings(&app).await?;
+    let tasks = state.downloads.tasks().await?;
+    let items = all_library_items(&tasks, std::path::Path::new(&settings.root_dir)).await?;
+    let wanted = drama_ids.map(|ids| ids.into_iter().collect::<std::collections::HashSet<_>>());
+    let checked_at = storage::now();
+    let mut result = Vec::new();
+    for drama in items {
+        if wanted
+            .as_ref()
+            .is_some_and(|ids| !ids.contains(&drama.drama_id))
+        {
+            continue;
+        }
+        let local = drama
+            .episodes
+            .iter()
+            .map(|episode| episode.episode)
+            .collect::<Vec<_>>();
+        let checked =
+            crate::net::edge_current("GET", &format!("/api/videos/{}", drama.drama_id), None).await;
+        match checked {
+            Ok(value) => {
+                let remote = library::parse_remote_episodes(&value);
+                let remote_episode_count = remote.len();
+                let new_numbers = library::new_episode_numbers(
+                    &remote
+                        .iter()
+                        .map(|(episode, _)| *episode)
+                        .collect::<Vec<_>>(),
+                    &local,
+                );
+                let new_episodes = remote
+                    .into_iter()
+                    .filter(|(episode, _)| new_numbers.contains(episode))
+                    .map(|(episode, title)| library::LibraryUpdateEpisode { episode, title })
+                    .collect();
+                result.push(library::LibraryUpdate {
+                    drama_id: drama.drama_id,
+                    title: drama.title,
+                    status: "ok".into(),
+                    remote_episode_count,
+                    new_episodes,
+                    cover_url: value
+                        .get("cover")
+                        .and_then(|cover| cover.as_str())
+                        .map(str::to_owned)
+                        .or(drama.cover_url),
+                    checked_at: checked_at.clone(),
+                    error: None,
+                });
+            }
+            Err(error) => result.push(library::LibraryUpdate {
+                drama_id: drama.drama_id,
+                title: drama.title,
+                status: "unknown".into(),
+                remote_episode_count: 0,
+                new_episodes: Vec::new(),
+                cover_url: drama.cover_url,
+                checked_at: checked_at.clone(),
+                error: Some(error),
+            }),
+        }
+    }
+    Ok(result)
 }
 
 #[tauri::command]

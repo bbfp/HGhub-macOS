@@ -182,3 +182,37 @@ export type DownloadTask = {
   created_at: string;
   updated_at: string;
 };
+
+export type LibraryEpisode = {
+  episode: number;
+  title: string;
+  task_id: string;
+  path: string;
+};
+
+export type LibraryDrama = {
+  drama_id: number;
+  title: string;
+  cover_path?: string | null;
+  cover_url?: string | null;
+  episodes: LibraryEpisode[];
+  updated_at: string;
+};
+
+export type LibraryPage = {
+  items: LibraryDrama[];
+  next_cursor?: string | null;
+  warnings: string[];
+};
+
+export type LibraryUpdateEpisode = { episode: number; title: string };
+export type LibraryUpdate = {
+  drama_id: number;
+  title: string;
+  status: "ok" | "unknown";
+  remote_episode_count: number;
+  new_episodes: LibraryUpdateEpisode[];
+  cover_url?: string | null;
+  checked_at: string;
+  error?: string | null;
+};

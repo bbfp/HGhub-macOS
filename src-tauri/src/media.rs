@@ -401,6 +401,58 @@ async fn local_file(app: &AppHandle, target: &str, range: Option<&str>) -> Respo
     file_response(&file, range).await
 }
 
+async fn local_image(app: &AppHandle, target: &str) -> Response<Vec<u8>> {
+    let Ok(file) = tokio::fs::canonicalize(target).await else {
+        return respond(404, "text/plain", b"image not found".to_vec(), "no-store");
+    };
+    let Ok(tasks) = crate::downloads::load_tasks(app).await else {
+        return respond(
+            503,
+            "text/plain",
+            b"download records unavailable".to_vec(),
+            "no-store",
+        );
+    };
+    let mut allowed = false;
+    for task in tasks {
+        let expected = crate::downloads::episode_path_for_read(
+            std::path::Path::new(&task.root_dir),
+            task.drama_id,
+            &task.drama_title,
+            task.episode,
+        );
+        let Some(cover) = expected
+            .parent()
+            .and_then(std::path::Path::parent)
+            .map(|dir| dir.join("cover.img"))
+        else {
+            continue;
+        };
+        if tokio::fs::canonicalize(cover)
+            .await
+            .is_ok_and(|cover| cover == file)
+        {
+            allowed = true;
+            break;
+        }
+    }
+    if !allowed {
+        return respond(
+            403,
+            "text/plain",
+            b"file is not a registered cover".to_vec(),
+            "no-store",
+        );
+    }
+    let Ok(bytes) = tokio::fs::read(&file).await else {
+        return respond(404, "text/plain", b"image not found".to_vec(), "no-store");
+    };
+    let Some(kind) = image_kind(&bytes) else {
+        return respond(415, "text/plain", b"invalid image".to_vec(), "no-store");
+    };
+    respond(200, kind, bytes, "public, max-age=86400")
+}
+
 pub async fn handle(
     app: Option<&AppHandle>,
     path: &str,
@@ -421,6 +473,18 @@ pub async fn handle(
     if path == "/file" {
         return match app {
             Some(app) => local_file(app, &target, range).await,
+            None => respond(
+                500,
+                "text/plain",
+                b"app handle unavailable".to_vec(),
+                "no-store",
+            ),
+        };
+    }
+
+    if path == "/local-img" {
+        return match app {
+            Some(app) => local_image(app, &target).await,
             None => respond(
                 500,
                 "text/plain",

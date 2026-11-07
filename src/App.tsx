@@ -7,6 +7,8 @@ import Home from "./pages/Home";
 import Search, { RankPage } from "./pages/Search";
 import Category, { ChannelPage } from "./pages/Category";
 import Profile from "./pages/Profile";
+import DownloadsPage from "./pages/DownloadsPage";
+import Library from "./pages/Library";
 import Feed from "./components/Feed";
 import { PostsPage, PostDetail } from "./pages/Posts";
 import LoginModal from "./components/LoginModal";
@@ -115,6 +117,8 @@ function AppBody() {
         <div className={vis("search")}><Search active={pageActive && tab === "search"} wide={wide} /></div>
         <div className={vis("category")}><Category wide={wide} /></div>
         <div className={vis("profile")}><Profile wide={wide} /></div>
+        {platform === "macos" && <div className={vis("downloads")}><DownloadsPage wide={wide} /></div>}
+        {platform === "macos" && <div className={vis("library")}><Library /></div>}
 
         {stack.map((p, i) => (
           <div key={p.key} className="absolute inset-0 z-30 bg-bg a-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
@@ -145,7 +149,7 @@ function DesktopShell() {
 }
 
 function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boolean }) {
-  const { stack, pop, loginOpen, setLoginOpen, tab, setTab } = useStore();
+  const { stack, pop, loginOpen, setLoginOpen, tab, setTab, platform } = useStore();
   const mainRef = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(true);
 
@@ -187,6 +191,8 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
         <div className={vis("search")}><Search active={pageActive && tab === "search"} wide={wide} /></div>
         <div className={vis("category")}><Category wide={wide} /></div>
         <div className={vis("profile")}><Profile wide={wide} /></div>
+        {platform === "macos" && <div className={vis("downloads")}><DownloadsPage wide={wide} /></div>}
+        {platform === "macos" && <div className={vis("library")}><Library /></div>}
         {stack.map((p, i) => (
           <div key={p.key} className="absolute inset-0 z-30 bg-bg win-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
             <StackPage page={p} onBack={pop} wide={wide} top={i === stack.length - 1} bottomInset={14} />

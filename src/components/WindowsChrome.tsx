@@ -6,6 +6,7 @@ import { Avatar } from "./ui";
 import {
   IClose, IGrid, IGridF, IHome, IHomeF, IMinus, IMoon, IRestore, ISearch, ISidebar,
   ISquare, ISun, ITrophy, IUser, IUserF, Logo,
+  IDownload, IClapper,
 } from "../icons";
 
 const appWindow = () => getCurrentWindow();
@@ -57,6 +58,12 @@ export function WindowsRail({ collapsed }: { collapsed: boolean }) {
     { key: "category", label: "分类", Icon: IGrid, Filled: IGridF },
     { key: "profile", label: "我的", Icon: IUser, Filled: IUserF },
   ];
+  if (platform === "macos") {
+    items.splice(2, 0,
+      { key: "downloads", label: "下载", Icon: IDownload, Filled: IDownload },
+      { key: "library", label: "我下载的", Icon: IClapper, Filled: IClapper },
+    );
+  }
   return (
     <nav className={`win-sidebar ${collapsed ? "is-compact" : ""}`} aria-label="主导航">
       <div className="win-sidebar-inner">
