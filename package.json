@@ -1,7 +1,7 @@
 {
   "name": "huangguo-client",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,7 @@
     "app:build": "tauri build",
     "macos:dev": "node scripts/macos.mjs dev",
     "macos:build": "node scripts/macos.mjs build",
-    "test:platform": "node --experimental-strip-types --test scripts/tests/platform.test.ts",
+    "test:platform": "node --experimental-strip-types --test scripts/tests/platform.test.ts scripts/tests/downloads-summary.test.ts",
     "android:init": "tauri android init",
     "android:icons": "node scripts/sync-android-icons.mjs",
     "android:dev": "tauri android dev",

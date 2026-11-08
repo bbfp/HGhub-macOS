@@ -1,8 +1,11 @@
 use super::{DownloadSettings, DownloadTask, SCHEMA_VERSION};
 use serde::Serialize;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 use tokio::io::AsyncWriteExt;
 
 static SERIAL: AtomicU64 = AtomicU64::new(0);
@@ -123,7 +126,19 @@ impl Store {
     // The manager is the sole writer. Overlay typed fields on the raw view to
     // retain future records and extra fields when an older app saves progress.
     pub async fn save(&self, tasks: &[DownloadTask], raw: &[Value]) -> Result<(), String> {
-        let mut result = raw.to_vec();
+        self.save_removed(tasks, raw, &HashSet::new()).await
+    }
+
+    /// Save after removing known v1 task records. Unknown schema records and
+    /// malformed records are retained so a newer/foreign task is never deleted
+    /// by this version.
+    pub async fn save_removed(
+        &self,
+        tasks: &[DownloadTask],
+        raw: &[Value],
+        removed_ids: &HashSet<String>,
+    ) -> Result<(), String> {
+        let mut result = without_removed(raw, removed_ids);
         for task in tasks {
             let value = serde_json::to_value(task).map_err(|e| e.to_string())?;
             if let Some(old) = result.iter_mut().find(|entry| {
@@ -206,4 +221,17 @@ impl Store {
         );
         atomic_json(&path, &value).await
     }
+}
+
+pub fn without_removed(raw: &[Value], removed_ids: &HashSet<String>) -> Vec<Value> {
+    raw.iter()
+        .filter(|entry| {
+            let schema = entry.get("schema_version").and_then(Value::as_u64);
+            let id = entry.get("id").and_then(Value::as_str);
+            schema != Some(SCHEMA_VERSION as u64)
+                || id.is_none_or(|id| !removed_ids.contains(id))
+                || serde_json::from_value::<DownloadTask>((*entry).clone()).is_err()
+        })
+        .cloned()
+        .collect()
 }

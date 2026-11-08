@@ -223,6 +223,38 @@ pub async fn download_local_path(
 }
 
 #[tauri::command]
+pub async fn download_reveal(state: State<'_, crate::api::Api>, id: String) -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Err("打开本地文件目前仅支持 macOS 版".into());
+    }
+    let task = state
+        .downloads
+        .tasks()
+        .await?
+        .into_iter()
+        .find(|task| task.id == id)
+        .ok_or("下载任务不存在")?;
+    if task.status != DownloadStatus::Completed {
+        return Err("只有已完成任务可以打开本地文件".into());
+    }
+    let output = episode_path_for_read(
+        std::path::Path::new(&task.root_dir),
+        task.drama_id,
+        &task.drama_title,
+        task.episode,
+    );
+    if !library::verified_file(&output).await {
+        return Err("本地视频或校验回执不存在，无法安全打开".into());
+    }
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(&output)
+        .spawn()
+        .map_err(|error| format!("无法打开 Finder：{error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn download_tasks(
     state: tauri::State<'_, crate::api::Api>,
 ) -> Result<Vec<DownloadTask>, String> {
@@ -315,6 +347,17 @@ pub async fn download_cancel(
     id: String,
 ) -> Result<(), String> {
     state.downloads.cancel(&id).await
+}
+
+#[tauri::command]
+pub async fn download_delete(
+    state: tauri::State<'_, crate::api::Api>,
+    ids: Vec<String>,
+) -> Result<usize, String> {
+    if !cfg!(target_os = "macos") {
+        return Err("删除本地下载记录目前仅支持 macOS 版".into());
+    }
+    state.downloads.delete(ids).await
 }
 
 #[cfg(test)]

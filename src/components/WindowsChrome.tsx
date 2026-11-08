@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore, type Tab } from "../store";
-import { APP_VERSION } from "../api";
+import { APP_VERSION, api, DOWNLOADS_CHANGED_EVENT } from "../api";
+import { unfinishedTaskCount } from "../downloadsSummary";
 import { Avatar } from "./ui";
 import {
   IClose, IGrid, IGridF, IHome, IHomeF, IMinus, IMoon, IRestore, ISearch, ISidebar,
-  ISquare, ISun, ITrophy, IUser, IUserF, Logo,
+  ISquare, ISun, ITrophy, IUser, IUserF, IVol, IVolMute, Logo,
   IDownload, IClapper,
 } from "../icons";
 
 const appWindow = () => getCurrentWindow();
 
 export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { theme, setTheme, setTab, platform } = useStore();
+  const { theme, setTheme, setTab, platform, muted, setMuted } = useStore();
   const [maxed, setMaxed] = useState(false);
 
   useEffect(() => {
@@ -34,6 +35,10 @@ export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
         <ISidebar size={17} strokeWidth={1.7} />
       </button>
       <div className="win-drag-region" data-tauri-drag-region />
+      {platform === "macos" && <button className="win-caption-tool" aria-label={muted ? "开启声音" : "静音"}
+        onClick={() => setMuted((value) => !value)}>
+        {muted ? <IVolMute size={17} strokeWidth={1.7} /> : <IVol size={17} strokeWidth={1.7} />}
+      </button>}
       <button className="win-caption-tool" aria-label="切换外观" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
         {theme === "dark" ? <ISun size={17} strokeWidth={1.7} /> : <IMoon size={17} strokeWidth={1.7} />}
       </button>
@@ -53,6 +58,26 @@ export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
 
 export function WindowsRail({ collapsed }: { collapsed: boolean }) {
   const { tab, setTab, user, setLoginOpen, push, platform } = useStore();
+  const [downloadCount, setDownloadCount] = useState(0);
+
+  useEffect(() => {
+    if (platform !== "macos") return undefined;
+    let alive = true;
+    const refresh = () => {
+      api.downloadTasks().then((tasks) => {
+        if (alive) setDownloadCount(unfinishedTaskCount(tasks));
+      }).catch(() => {});
+    };
+    const onChanged = () => refresh();
+    refresh();
+    window.addEventListener(DOWNLOADS_CHANGED_EVENT, onChanged);
+    const timer = window.setInterval(refresh, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener(DOWNLOADS_CHANGED_EVENT, onChanged);
+    };
+  }, [platform]);
   const items: { key: Tab; label: string; Icon: typeof IHome; Filled: typeof IHomeF }[] = [
     { key: "home", label: "首页", Icon: IHome, Filled: IHomeF },
     { key: "category", label: "分类", Icon: IGrid, Filled: IGridF },
@@ -80,6 +105,7 @@ export function WindowsRail({ collapsed }: { collapsed: boolean }) {
               onClick={() => setTab(key)}>
               <span className="win-nav-symbol">{tab === key ? <Filled size={21} /> : <Icon size={21} strokeWidth={1.7} />}</span>
               <span className="win-nav-copy">{label}</span>
+              {key === "downloads" && downloadCount > 0 && <span className="win-nav-badge" aria-label={`${downloadCount} 个未完成任务`}>{downloadCount > 99 ? "99+" : downloadCount}</span>}
             </button>
           ))}
           <button className="win-nav-item" onClick={() => push({ kind: "ranks" })}>

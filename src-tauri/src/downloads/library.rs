@@ -67,7 +67,7 @@ struct DramaBuilder {
     episodes: BTreeMap<u32, LibraryEpisode>,
 }
 
-async fn receipt_length_matches(path: &Path) -> bool {
+pub async fn verified_file(path: &Path) -> bool {
     let Ok(metadata) = tokio::fs::metadata(path).await else {
         return false;
     };
@@ -129,7 +129,7 @@ pub async fn build_page(
             warnings.push(format!("历史下载目录无法访问：{root_key}"));
         }
         let output = episode_path_for_read(root, task.drama_id, &task.drama_title, task.episode);
-        if !receipt_length_matches(&output).await {
+        if !verified_file(&output).await {
             continue;
         }
         let group = groups.entry(task.drama_id).or_default();

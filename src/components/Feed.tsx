@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, cover, fmt, fmtTime, mediaUrl, platform, siteUrl } from "../api";
+import { api, cover, fmt, fmtTime, mediaUrl, notifyDownloadsChanged, platform, siteUrl } from "../api";
 import type { Detail, Episode, Post, VideoCard } from "../types";
 import { useStore } from "../store";
 import { Avatar, Img, Sheet } from "./ui";
@@ -23,13 +23,14 @@ type Props = {
   bottomInset: number;
   onBack?: () => void;
   onNearEnd?: () => void;
+  autoPlay?: boolean;
 };
 
 const RATES = [1, 1.25, 1.5, 2];
 
 const stripHtml = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
-export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd }: Props) {
+export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd, autoPlay = true }: Props) {
   const store = useStore();
   const { isLiked, isFav, toggleLikeLocal, toggleFavLocal, toggleFollowLocal, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen } = store;
   const isDesktop = platform !== "android";
@@ -47,9 +48,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const [duration, setDuration] = useState(0);
   const [vsize, setVsize] = useState({ w: 0, h: 0 });
   const [buffered, setBuffered] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(!autoPlay);
   const [rate, setRate] = useState(1);
-  const [waiting, setWaiting] = useState(false);
+  const [waiting, setWaiting] = useState(autoPlay);
   const [err, setErr] = useState("");
   const [panel, setPanel] = useState<"episodes" | "comments" | "article" | null>(null);
   const [descOpen, setDescOpen] = useState(false);
@@ -212,7 +213,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   /* 切换条目/集数时重置播放状态 */
   useEffect(() => {
-    setTime(0); setDuration(0); setBuffered(0); setErr(""); setWaiting(true); setPaused(false); setDescOpen(false);
+    setTime(0); setDuration(0); setBuffered(0); setErr(""); setWaiting(autoPlay); setPaused(!autoPlay); setDescOpen(false);
     setVsize({ w: 0, h: 0 });
   }, [playKey]);
 
@@ -456,7 +457,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     })));
     const failed = results.filter((result) => result.status === "rejected");
     if (failed.length) throw new Error(`已加入 ${results.length - failed.length} 集，${failed.length} 集未加入，可重试：${String((failed[0] as PromiseRejectedResult).reason)}`);
-    toast(`已加入 ${selected.length} 集，可在“我的”查看下载`, "ok");
+    notifyDownloadsChanged();
+    toast(`已加入 ${selected.length} 集，可在“下载”查看任务`, "ok");
   };
 
   const pickEp = (ep: number) => {
@@ -492,7 +494,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               {isActive && playUrl ? (
                 <div className="absolute inset-0" style={{ touchAction: "pan-y" }}
                   onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
-                <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay muted={muted}
+                <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay={autoPlay} muted={muted}
                   volume={volume} rate={effRate}
                   fit={isDesktop || (vsize.w > 0 && vsize.w > vsize.h) ? "contain" : "cover"}
                   onClick={() => { if (isDesktop) videoRef.current?.toggle(); }}

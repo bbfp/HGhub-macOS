@@ -281,7 +281,7 @@ async fn login_redirect_fails_over_only_to_the_next_configured_origin() {
         "/api/account/loginByPassword",
         Some(&body),
         Some("test-token"),
-        |_| {}
+        |_| {},
     )
     .await;
     assert!(result.is_ok(), "{result:?}");

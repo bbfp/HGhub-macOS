@@ -1,6 +1,6 @@
 [package]
 name = "huangguo-client"
-version = "1.0.1"
+version = "1.0.2"
 description = "HGhub · 黄果短剧客户端"
 authors = ["HGhub"]
 edition = "2021"

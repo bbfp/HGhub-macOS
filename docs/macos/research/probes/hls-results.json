@@ -1,0 +1,52 @@
+[
+  {
+    "kind": "aes-ts",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 320,
+          "height": 180
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio"
+        }
+      ],
+      "format": {
+        "duration": "6.037333",
+        "size": "536723"
+      }
+    },
+    "full_decode_passed": true,
+    "faststart": true
+  },
+  {
+    "kind": "plain-fmp4",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 320,
+          "height": 180
+        },
+        {
+          "codec_name": "aac",
+          "codec_type": "audio"
+        }
+      ],
+      "format": {
+        "duration": "6.021333",
+        "size": "535729"
+      }
+    },
+    "full_decode_passed": true,
+    "faststart": true
+  }
+]

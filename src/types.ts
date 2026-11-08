@@ -179,6 +179,7 @@ export type DownloadTask = {
   total_segments: number;
   completed_segments: unknown[];
   error?: string | null;
+  cover_url?: string | null;
   created_at: string;
   updated_at: string;
 };

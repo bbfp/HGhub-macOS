@@ -3,7 +3,7 @@ import { api, platform as envPlatform } from "./api";
 import type { User } from "./types";
 
 export type { Platform } from "./platform";
-import type { Platform } from "./platform";
+import { defaultStartupTab, type Platform } from "./platform";
 export type Theme = "dark" | "light";
 export type Tab = "home" | "search" | "category" | "profile" | "downloads" | "library";
 
@@ -102,9 +102,9 @@ export const useStore = () => useContext(Ctx);
 let seq = 0;
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [p, setP] = useState<Persist>(loadPersist);
+  const [p, setP] = useState<Persist>(() => ({ ...loadPersist(), muted: true }));
   const [theme, setThemeState] = useState<Theme>(readTheme);
-  const [tab, setTabRaw] = useState<Tab>("home");
+  const [tab, setTabRaw] = useState<Tab>(() => defaultStartupTab(envPlatform));
   const [stack, setStack] = useState<Page[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);

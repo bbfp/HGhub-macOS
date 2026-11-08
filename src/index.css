@@ -213,6 +213,10 @@ input[type="range"].hg-range::-webkit-slider-thumb { -webkit-appearance: none; w
   border-radius: 2px; background: var(--p-primary);
 }
 .win-nav-copy { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win-nav-badge {
+  min-width: 19px; height: 19px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: var(--p-primary); color: var(--p-on-primary); font-size: 10px; font-weight: 700;
+}
 .win-nav-key {
   font-size: 10px; color: var(--p-dim); background: var(--p-s2); border-radius: 4px;
   padding: 1px 5px; font-family: inherit;

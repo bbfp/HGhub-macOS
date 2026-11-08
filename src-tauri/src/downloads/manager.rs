@@ -3,7 +3,7 @@ use super::{
     worker, DownloadLimits, DownloadSettings, DownloadStatus, DownloadTask,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     future::Future,
     path::PathBuf,
     pin::Pin,
@@ -66,6 +66,7 @@ enum SettingsUpdate {
 enum Message {
     Enqueue(DownloadTask, Reply<DownloadTask>),
     Change(String, Action, Reply<()>),
+    Delete(Vec<String>, Reply<usize>),
     Tasks(Reply<Vec<DownloadTask>>),
     Warnings(Reply<Vec<String>>),
     Progress(DownloadTask, u64, Reply<()>),
@@ -201,6 +202,9 @@ impl DownloadManager {
     pub async fn cancel(&self, id: &str) -> Result<(), String> {
         self.request(|reply| Message::Change(id.into(), Action::Cancel, reply))
             .await
+    }
+    pub async fn delete(&self, ids: Vec<String>) -> Result<usize, String> {
+        self.request(|reply| Message::Delete(ids, reply)).await
     }
     pub fn limits(&self) -> DownloadLimits {
         *self
@@ -465,6 +469,99 @@ async fn event_loop(
                     storage_failed = true;
                 }
                 let _ = reply.send(result);
+            }
+            Message::Delete(ids, reply) => {
+                if storage_failed {
+                    let _ = reply.send(Err(
+                        "下载记录无法保存，请检查磁盘空间和目录权限后重启".into()
+                    ));
+                    continue;
+                }
+                let unique_ids: Vec<_> = ids
+                    .into_iter()
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect();
+                let mut targets = Vec::with_capacity(unique_ids.len());
+                let mut removed_ids = HashSet::new();
+                let validation = (|| {
+                    for id in &unique_ids {
+                        let Some(task) = loaded.tasks.iter().find(|task| task.id == *id) else {
+                            return Err(format!("下载任务不存在：{id}"));
+                        };
+                        if active.contains_key(id) {
+                            return Err(format!("任务仍在停止中，请稍后再删除：{id}"));
+                        }
+                        if !matches!(
+                            task.status,
+                            DownloadStatus::Failed | DownloadStatus::Cancelled
+                        ) {
+                            return Err(format!("只能删除失败或取消任务：{id}"));
+                        }
+                        let output = super::episode_path_for_read(
+                            std::path::Path::new(&task.root_dir),
+                            task.drama_id,
+                            &task.drama_title,
+                            task.episode,
+                        );
+                        if output.exists() || output.with_extension("json").exists() {
+                            return Err(format!(
+                                "这条任务已有本地文件，为避免误删请保留记录：{}",
+                                output.display()
+                            ));
+                        }
+                        let temporary = super::task_temp_dir_for_resume(
+                            std::path::Path::new(&task.root_dir),
+                            task.drama_id,
+                            &task.drama_title,
+                            task.episode,
+                        );
+                        let root = std::path::Path::new(&task.root_dir);
+                        if !temporary.starts_with(root)
+                            || temporary.parent().and_then(std::path::Path::file_name)
+                                != Some(std::ffi::OsStr::new(".tmp"))
+                        {
+                            return Err(format!("下载临时目录不安全，未删除任务：{id}"));
+                        }
+                        targets.push((task.clone(), temporary));
+                        removed_ids.insert(id.clone());
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = validation {
+                    let _ = reply.send(Err(error));
+                    continue;
+                }
+                let retained: Vec<_> = loaded
+                    .tasks
+                    .iter()
+                    .filter(|task| !removed_ids.contains(&task.id))
+                    .cloned()
+                    .collect();
+                let result = store
+                    .save_removed(&retained, &loaded.raw, &removed_ids)
+                    .await;
+                match result {
+                    Ok(()) => {
+                        loaded.tasks = retained;
+                        loaded.raw = storage::without_removed(&loaded.raw, &removed_ids);
+                        for (task, temporary) in targets {
+                            if let Err(error) = tokio::fs::remove_dir_all(&temporary).await {
+                                if error.kind() != std::io::ErrorKind::NotFound {
+                                    loaded.warnings.push(format!(
+                                        "任务已删除，但临时文件清理失败（{}）：{}",
+                                        task.id, error
+                                    ));
+                                }
+                            }
+                        }
+                        let _ = reply.send(Ok(removed_ids.len()));
+                    }
+                    Err(error) => {
+                        storage_failed = true;
+                        let _ = reply.send(Err(error));
+                    }
+                }
             }
             Message::Progress(progress, run_generation, reply) => {
                 if active

@@ -25,6 +25,8 @@ export const cover = (url?: string, _w = 480) =>
 export const playlist = (url: string) => `${LOCAL}/hls?u=${encodeURIComponent(url)}`;
 export const localFile = (path: string) => `${LOCAL}/file?u=${encodeURIComponent(path)}`;
 export const localImage = (path: string) => `${LOCAL}/local-img?u=${encodeURIComponent(path)}`;
+export const DOWNLOADS_CHANGED_EVENT = "hghub:downloads-changed";
+export const notifyDownloadsChanged = () => window.dispatchEvent(new Event(DOWNLOADS_CHANGED_EVENT));
 
 /* ── 调用封装 ───────────────────────────────────────────── */
 
@@ -83,6 +85,8 @@ export const api = {
   setDownloadLimits: (limits: { maxTasks: number; maxEpisodesPerDrama: number; maxSegmentsPerEpisode: number }) =>
     invoke<DownloadSettings>("download_limits_set", limits),
   downloadLocalPath: (id: string) => invoke<string>("download_local_path", { id }),
+  downloadReveal: (id: string) => invoke<void>("download_reveal", { id }),
+  downloadDelete: (ids: string[]) => invoke<number>("download_delete", { ids }),
   downloadTasks: () => invoke<DownloadTask[]>("download_tasks"),
   downloadWarnings: () => invoke<string[]>("download_warnings"),
   downloadEnqueue: (args: { dramaId: number; dramaTitle: string; episode: number; episodeTitle: string; sourceUrl: string; rootDir?: string; coverUrl?: string }) =>

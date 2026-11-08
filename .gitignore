@@ -25,7 +25,3 @@ Thumbs.db
 *.pem
 .env
 .env.*
-
-# 本机开发、下载与发布暂存
-.local/
-*.corrupt-*

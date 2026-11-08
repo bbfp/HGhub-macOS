@@ -1,0 +1,44 @@
+[
+  {
+    "name": "darling",
+    "version": "0.24.1",
+    "rust_version": "1.88.0",
+    "source": "https://index.crates.io/da/rl/darling"
+  },
+  {
+    "name": "serde_with",
+    "version": "3.24.0",
+    "rust_version": "1.88",
+    "source": "https://index.crates.io/se/rd/serde_with"
+  },
+  {
+    "name": "tauri",
+    "version": "2.12.5",
+    "rust_version": "1.90",
+    "source": "https://index.crates.io/ta/ur/tauri"
+  },
+  {
+    "name": "tauri-build",
+    "version": "2.7.4",
+    "rust_version": "1.90",
+    "source": "https://index.crates.io/ta/ur/tauri-build"
+  },
+  {
+    "name": "tauri-utils",
+    "version": "2.10.2",
+    "rust_version": "1.90",
+    "source": "https://index.crates.io/ta/ur/tauri-utils"
+  },
+  {
+    "name": "time",
+    "version": "0.3.55",
+    "rust_version": "1.88.0",
+    "source": "https://index.crates.io/ti/me/time"
+  },
+  {
+    "name": "tokio",
+    "version": "1.54.1",
+    "rust_version": "1.85",
+    "source": "https://index.crates.io/to/ki/tokio"
+  }
+]

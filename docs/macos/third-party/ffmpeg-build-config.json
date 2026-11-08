@@ -1,5 +1,6 @@
 [
   "./configure",
+  "--prefix=.local/ffmpeg/runtime",
   "--disable-gpl",
   "--disable-nonfree",
   "--disable-autodetect",

@@ -147,6 +147,80 @@ async fn damaged_store_is_preserved_with_visible_warning_and_unknown_records_sur
 }
 
 #[tokio::test]
+async fn deleting_failed_and_cancelled_tasks_keeps_completed_media_and_unknown_records() {
+    let dir = test_dir("delete-tasks");
+    let app_dir = dir.join("app");
+    let mut failed = task(&dir, 1, 1, "");
+    failed.status = DownloadStatus::Failed;
+    let mut cancelled = task(&dir, 2, 1, "");
+    cancelled.status = DownloadStatus::Cancelled;
+    let mut completed = task(&dir, 3, 1, "");
+    completed.status = DownloadStatus::Completed;
+    let completed_path = episode_path(&dir, 3, &completed.drama_title, 1);
+    write_receipted_file(&completed_path, b"keep-me").await;
+    for item in [&failed, &cancelled] {
+        tokio::fs::create_dir_all(task_temp_dir_for_resume(
+            Path::new(&item.root_dir),
+            item.drama_id,
+            &item.drama_title,
+            item.episode,
+        ))
+        .await
+        .unwrap();
+    }
+    let store = storage::Store::new(app_dir.clone());
+    let mut raw = vec![
+        serde_json::to_value(&failed).unwrap(),
+        serde_json::to_value(&cancelled).unwrap(),
+        serde_json::to_value(&completed).unwrap(),
+        serde_json::json!({"schema_version": 99, "id": "future", "keep": true}),
+    ];
+    store
+        .save(
+            &[failed.clone(), cancelled.clone(), completed.clone()],
+            &raw,
+        )
+        .await
+        .unwrap();
+    raw.clear();
+    let manager = DownloadManager::new(5);
+    manager.initialize(app_dir.clone()).await.unwrap();
+    assert_eq!(
+        manager.delete(vec![failed.id, cancelled.id]).await.unwrap(),
+        2
+    );
+    let remaining = manager.tasks().await.unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].status, DownloadStatus::Completed);
+    assert!(completed_path.exists());
+    assert!(!task_temp_dir_for_resume(Path::new(&completed.root_dir), 1, "Test 1", 1).exists());
+    let saved: Vec<serde_json::Value> =
+        serde_json::from_slice(&std::fs::read(app_dir.join("downloads/tasks.json")).unwrap())
+            .unwrap();
+    assert!(saved.iter().any(|entry| entry["keep"] == true));
+    manager.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn deleting_queued_or_paused_tasks_is_rejected() {
+    let dir = test_dir("delete-reject");
+    let app_dir = dir.join("app");
+    let mut queued = task(&dir, 4, 1, "");
+    queued.status = DownloadStatus::Paused;
+    let store = storage::Store::new(app_dir.clone());
+    store
+        .save(std::slice::from_ref(&queued), &[])
+        .await
+        .unwrap();
+    let manager = DownloadManager::new(5);
+    manager.initialize(app_dir).await.unwrap();
+    let error = manager.delete(vec![queued.id.clone()]).await.unwrap_err();
+    assert!(error.contains("失败或取消"));
+    assert_eq!(manager.tasks().await.unwrap().len(), 1);
+    manager.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn old_settings_without_concurrency_fields_use_new_defaults() {
     let dir = test_dir("settings-defaults");
     let store = storage::Store::new(dir.clone());

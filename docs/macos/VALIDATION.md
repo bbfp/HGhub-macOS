@@ -1,8 +1,32 @@
-> 当前状态（2026-11-07）：设计复核和 Router 定向只读复核已完成；Claude 最终实现复核因网关返回 402 未完成，不能把它写成通过。当前交付候选在 `out/macos-download-library-20261107/`；公开源码为 https://github.com/bbfp/HGhub-macOS。旧 `out/macos-S0/` 未被本轮候选覆盖。
+> 当前状态（2026-11-08）：下载管理与启动播放交互修订已完成；本轮未使用 Claude Code。当前 v1.0.2 交付候选会写入新的 `out/macos-v1.0.2-20261108/`，不会覆盖旧候选或生产 App。公开源码为 https://github.com/bbfp/HGhub-macOS。
 
 # S0 候选交付验证
 
+## 2026-11-08 启动、更新与筛选修订
+
+本轮实现每次启动进入“我的”、每次启动静音、首页手动播放、更新结果直接入队、短剧数/集数双统计、未完成集数角标和下载状态单选筛选。版本号更新为 v1.0.2。构建使用仓库内 Rust 1.90 工具链，测试 App 启动后已关闭。
+
+| 检查 | 结果与范围 | 证据 | 把握 |
+| --- | --- | --- | --- |
+| 逻辑回归 | 状态汇总、未完成集数、失败/取消筛选、macOS 默认启动页共 7 项通过 | `scripts/tests/downloads-summary.test.ts`、`scripts/tests/platform.test.ts` | 高 |
+| 前端构建 | TypeScript/Vite 构建通过 | `pnpm build` | 高 |
+| Rust 回归 | 47 项通过，6 项外网/人工用例忽略；严格 Clippy 和 fmt 通过 | `cargo test --locked`、`cargo clippy --locked --all-targets --all-features -- -D warnings` | 高，仅限本地受控场景 |
+| macOS UI | 启动默认“我的”，右上角显示“开启声音”；进入首页显示“播放”而不自动播放；下载页显示全部/下载中/等待/暂停/失败筛选 | 隔离候选 App CUA UI 树 | 高，使用现有本地任务数据，未新增下载 |
+| 候选打包 | arm64 App 签名验证通过，DMG `hdiutil verify` 通过 | 候选目录 `out/macos-v1.0.2-20261108/` | 高，DMG 未做拖拽安装验收 |
+
 初始 S0 候选于 2026-11-04 构建；后续镜像、在线播放和一集下载验证见下方 2026-11-07 更新。当前独立交付候选包含下载分组、本地库和“我的”页下载地址设置。DMG 已校验，挂载验收仍未补做。
+
+## 2026-11-08 下载管理修订候选
+
+本轮修订继续使用独立候选目录，未覆盖旧 App 或生产任务。新增下载总览、稳定折叠、失败/取消删除、Finder 定位、封面卡片和本地库更新即时联动。
+
+| 检查 | 结果与范围 | 证据 | 把握 |
+| --- | --- | --- | --- |
+| 纯逻辑回归 | 状态汇总、短剧数量、失败/取消删除资格 2 项通过 | `scripts/tests/downloads-summary.test.ts` | 高 |
+| Rust 回归 | 47 项通过，6 项外网/人工用例忽略；包含失败/取消删除、已完成文件保留、未来记录保留和非终态拒绝 | `src-tauri/src/downloads/tests.rs` | 高，仅限本地受控场景 |
+| 前端与平台 | TypeScript/Vite 构建、4 项平台/逻辑测试、fmt、严格 Clippy 通过 | 本轮命令输出 | 高 |
+| 隔离 macOS UI | 下载总览、失败/取消统计、批量删除按钮、封面卡片占位、任务数量、活动任务默认展开、完成任务折叠、单条删除和 Finder 按钮均可见；点击短剧卡片后成功收起活动任务 | 隔离数据目录 `.local/download-manager-smoke-20261108` 的候选 App UI 树 | 高，合成任务；未在真实任务上删除 |
+| 候选打包 | App ad-hoc 签名、arm64、内置 FFmpeg、DMG 完整性校验通过 | `out/macos-download-manager-20261108/` 命令输出 | 高，DMG 挂载仍未验收 |
 
 ## 2026-11-07 下载分组与本地库候选
 

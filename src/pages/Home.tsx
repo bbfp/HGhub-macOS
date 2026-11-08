@@ -46,7 +46,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   return (
     <div className="absolute inset-0 bg-black">
       {items.length ? (
-        <Feed videoIds={ids} mode="home" active={active} bottomInset={bottomInset}
+        <Feed videoIds={ids} mode="home" active={active} autoPlay={platform !== "macos"} bottomInset={bottomInset}
           onNearEnd={() => { if (!loading && !done) load(page + 1); }} />
       ) : loading ? (
         <div className="absolute inset-0 flex items-center justify-center" role="status" aria-live="polite"><div className="w-9 h-9 spinner" /></div>

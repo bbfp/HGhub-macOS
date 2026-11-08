@@ -28,9 +28,7 @@ impl Api {
     }
 
     async fn authed(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
-        let token = self
-            .token()
-            .ok_or_else(|| "请先登录".to_string())?;
+        let token = self.token().ok_or_else(|| "请先登录".to_string())?;
         edge(method, path, body, Some(&token)).await
     }
 }
@@ -42,7 +40,11 @@ pub async fn debug_log(app: tauri::AppHandle, msg: String) -> Result<(), String>
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("debug.log");
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         let _ = writeln!(f, "{}", msg);
     }
     Ok(())
@@ -240,12 +242,7 @@ pub async fn api_comment_send(
 }
 
 #[tauri::command]
-pub async fn api_like(
-    state: State<'_, Api>,
-    id: i64,
-    ep: u32,
-    on: bool,
-) -> Result<Value, String> {
+pub async fn api_like(state: State<'_, Api>, id: i64, ep: u32, on: bool) -> Result<Value, String> {
     let method = if on { "POST" } else { "DELETE" };
     state
         .authed(method, &format!("/api/videos/{id}/like?ep={ep}"), None)
@@ -253,11 +250,7 @@ pub async fn api_like(
 }
 
 #[tauri::command]
-pub async fn api_collect(
-    state: State<'_, Api>,
-    id: i64,
-    on: bool,
-) -> Result<Value, String> {
+pub async fn api_collect(state: State<'_, Api>, id: i64, on: bool) -> Result<Value, String> {
     let method = if on { "POST" } else { "DELETE" };
     state
         .authed(method, &format!("/api/videos/{id}/collect"), None)
@@ -265,11 +258,7 @@ pub async fn api_collect(
 }
 
 #[tauri::command]
-pub async fn api_follow(
-    state: State<'_, Api>,
-    uid: i64,
-    on: bool,
-) -> Result<Value, String> {
+pub async fn api_follow(state: State<'_, Api>, uid: i64, on: bool) -> Result<Value, String> {
     let method = if on { "POST" } else { "DELETE" };
     state
         .authed(method, &format!("/api/users/{uid}/follow"), None)

@@ -1,0 +1,21 @@
+{
+  "checked_utc": "2026-11-04T12:34:02.743277+00:00",
+  "proxy_used": "127.0.0.1:1082",
+  "authenticated": false,
+  "error": {
+    "class": "JSONDecodeError",
+    "message_class": "Expecting value: line 1 column 1 (char 0)"
+  },
+  "followup_diagnostic": {
+    "method": "curl HTTP CONNECT via existing system HTTP proxy",
+    "curl_exit": 56,
+    "connect_response": 503,
+    "api_response_received": false,
+    "requests_checked": [
+      "site root",
+      "public videos GET",
+      "public play GET"
+    ],
+    "evidence_scope": "observed tool output; no media URL, token or key obtained"
+  }
+}
