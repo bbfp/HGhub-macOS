@@ -4,12 +4,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { Comment, CommentPage, Episode } from "../types";
 import { useStore } from "../store";
 import { Avatar, Empty } from "./ui";
-import { IClose, IDownload, IHeart, ISendF } from "../icons";
+import { ICheck, IClose, IDownload, IHeart, ISendF } from "../icons";
 
 /* ================= 选集 ================= */
-export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, onDownload }: {
+export function EpisodesPanel({ videoId, episodes, current, downloadedEpisodes, onPick, onClose, onDownload }: {
   videoId: number; episodes: Episode[]; current: number; onPick: (ep: number) => void; onClose: () => void;
-  onDownload?: (episodes: Episode[], rootDir?: string) => Promise<void>;
+  downloadedEpisodes?: number[]; onDownload?: (episodes: Episode[], rootDir?: string) => Promise<void>;
 }) {
   const { toast } = useStore();
   const [asc, setAsc] = useState(true);
@@ -18,6 +18,7 @@ export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, onD
   const [root, setRoot] = useState("");
   const [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState(false);
+  const downloaded = new Set(downloadedEpisodes || []);
   useEffect(() => { setDownloadMode(false); setSelected(new Set([current])); }, [videoId]);
   const list = asc ? episodes : [...episodes].reverse();
   const enterDownloads = async () => {
@@ -57,9 +58,15 @@ export function EpisodesPanel({ videoId, episodes, current, onPick, onClose, onD
         <div className="grid grid-cols-4 gap-2">
           {list.map((episode) => {
             const on = downloadMode ? selected.has(episode.ep_num) : episode.ep_num === current;
-            return <button key={episode.ep_num} disabled={busy} aria-label={`${downloadMode ? "选择下载" : "播放"}第 ${episode.ep_num} 集`} aria-pressed={on}
+            const isDownloaded = downloaded.has(episode.ep_num);
+            return <button key={episode.ep_num} disabled={busy} aria-label={`${downloadMode ? "选择下载" : "播放"}第 ${episode.ep_num} 集${isDownloaded ? "，已下载" : ""}`} aria-pressed={on}
               onClick={() => { if (!downloadMode) { onPick(episode.ep_num); return; } setSelected((previous) => { const next = new Set(previous); if (next.has(episode.ep_num)) next.delete(episode.ep_num); else next.add(episode.ep_num); return next; }); }}
-              className={`h-10 rounded-(--r-sm) text-[12px] font-semibold pressable disabled:opacity-50 ${on ? "bg-primary text-on-primary" : "bg-s3 text-on/80"}`}>{downloadMode && on ? "✓ " : ""}{episode.ep_num}</button>;
+              className={`h-10 rounded-(--r-sm) text-[12px] font-semibold pressable disabled:opacity-50 ${on ? "bg-primary text-on-primary" : "bg-s3 text-on/80"}`}>
+              <span className="inline-flex items-center justify-center gap-1">
+                {isDownloaded && <ICheck size={12} className={on ? "text-white" : "text-mint"} strokeWidth={2.5} />}
+                {episode.ep_num}
+              </span>
+            </button>;
           })}
         </div>
         {!episodes.length && <div className="text-center text-[11.5px] text-dim py-8">暂无剧集</div>}

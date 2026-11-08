@@ -1,4 +1,5 @@
 use super::{
+    index::{self, DownloadMarker, RemoteCheck},
     storage::{self, Store},
     worker, DownloadLimits, DownloadSettings, DownloadStatus, DownloadTask,
 };
@@ -69,6 +70,8 @@ enum Message {
     Delete(Vec<String>, Reply<usize>),
     Tasks(Reply<Vec<DownloadTask>>),
     Warnings(Reply<Vec<String>>),
+    LibraryStatus(Vec<i64>, Reply<Vec<DownloadMarker>>),
+    RemoteChecks(Vec<RemoteCheck>, Reply<()>),
     Progress(DownloadTask, u64, Reply<()>),
     Finished(String, u64, Result<(), String>),
     Settings(PathBuf, Option<SettingsUpdate>, Reply<DownloadSettings>),
@@ -132,8 +135,10 @@ impl DownloadManager {
         if self.sender.get().is_some() {
             return Ok(());
         }
-        let store = Store::new(dir);
+        let store = Store::new(dir.clone());
         let mut loaded = store.load().await?;
+        let (library_index, index_warnings) = index::load_or_rebuild(&dir, &loaded.tasks).await?;
+        loaded.warnings.extend(index_warnings);
         match store.existing_settings().await {
             Ok(Some(settings)) => {
                 // Settings are read before workers are spawned. A later UI
@@ -160,7 +165,14 @@ impl DownloadManager {
         self.sender
             .set(sender)
             .map_err(|_| "下载服务已启动".to_string())?;
-        tokio::spawn(event_loop(self.clone(), store, loaded, receiver));
+        tokio::spawn(event_loop(
+            self.clone(),
+            store,
+            loaded,
+            library_index,
+            dir,
+            receiver,
+        ));
         Ok(())
     }
     fn send(&self, message: Message) -> Result<(), String> {
@@ -187,6 +199,14 @@ impl DownloadManager {
     }
     pub async fn warnings(&self) -> Result<Vec<String>, String> {
         self.request(Message::Warnings).await
+    }
+    pub async fn library_status(&self, drama_ids: Vec<i64>) -> Result<Vec<DownloadMarker>, String> {
+        self.request(|reply| Message::LibraryStatus(drama_ids, reply))
+            .await
+    }
+    pub async fn record_remote_checks(&self, checks: Vec<RemoteCheck>) -> Result<(), String> {
+        self.request(|reply| Message::RemoteChecks(checks, reply))
+            .await
     }
     pub async fn enqueue(&self, task: DownloadTask) -> Result<DownloadTask, String> {
         self.request(|reply| Message::Enqueue(task, reply)).await
@@ -292,6 +312,8 @@ async fn event_loop(
     manager: DownloadManager,
     store: Store,
     mut loaded: storage::Loaded,
+    mut library_index: index::LibraryIndex,
+    data_dir: PathBuf,
     mut receiver: mpsc::UnboundedReceiver<Message>,
 ) {
     let mut active = HashMap::<String, Running>::new();
@@ -358,6 +380,17 @@ async fn event_loop(
             Message::Warnings(reply) => {
                 let _ = reply.send(Ok(loaded.warnings.clone()));
             }
+            Message::LibraryStatus(ids, reply) => {
+                let _ = reply.send(Ok(library_index.statuses(&ids)));
+            }
+            Message::RemoteChecks(checks, reply) => {
+                library_index.apply_remote_checks(&checks);
+                let result = index::save(&data_dir, &library_index).await;
+                if result.is_err() {
+                    storage_failed = true;
+                }
+                let _ = reply.send(result);
+            }
             Message::Enqueue(mut incoming, reply) => {
                 if storage_failed {
                     let _ = reply.send(Err(
@@ -365,6 +398,7 @@ async fn event_loop(
                     ));
                     continue;
                 }
+                let mut index_changed = false;
                 let position = loaded.tasks.iter().position(|old| {
                     old.drama_id == incoming.drama_id
                         && old.episode == incoming.episode
@@ -412,6 +446,10 @@ async fn event_loop(
                     next.updated_at = storage::now();
                     incoming = next;
                     loaded.tasks[index] = incoming.clone();
+                    if missing_output {
+                        library_index.remove_episode(incoming.drama_id, incoming.episode);
+                        index_changed = true;
+                    }
                 } else {
                     loaded.tasks.push(incoming.clone());
                 }
@@ -421,6 +459,13 @@ async fn event_loop(
                     .map(|_| incoming);
                 if result.is_err() {
                     storage_failed = true;
+                }
+                if index_changed {
+                    if let Err(error) = index::save(&data_dir, &library_index).await {
+                        loaded
+                            .warnings
+                            .push(format!("保存本地下载索引失败：{error}"));
+                    }
                 }
                 let _ = reply.send(result);
             }
@@ -593,6 +638,7 @@ async fn event_loop(
                     continue;
                 }
                 active.remove(&id);
+                let mut completed_task = None;
                 if let Some(task) = loaded.tasks.iter_mut().find(|task| task.id == id) {
                     match result {
                         // A published and verified MP4 is complete. A late
@@ -602,6 +648,7 @@ async fn event_loop(
                             task.status = DownloadStatus::Completed;
                             task.progress = 1.0;
                             task.error = None;
+                            completed_task = Some(task.clone());
                         }
                         Err(error) => {
                             if task.status == DownloadStatus::Downloading {
@@ -615,6 +662,20 @@ async fn event_loop(
                 if let Err(error) = store.save(&loaded.tasks, &loaded.raw).await {
                     loaded.warnings.push(format!("保存下载结果失败：{error}"));
                     storage_failed = true;
+                }
+                if let Some(task) = completed_task {
+                    let output = super::episode_path_for_read(
+                        std::path::Path::new(&task.root_dir),
+                        task.drama_id,
+                        &task.drama_title,
+                        task.episode,
+                    );
+                    library_index.mark_completed(&task, super::library::cover_for(&output));
+                    if let Err(error) = index::save(&data_dir, &library_index).await {
+                        loaded
+                            .warnings
+                            .push(format!("保存本地下载索引失败：{error}"));
+                    }
                 }
             }
             Message::Settings(default_root, update, reply) => {

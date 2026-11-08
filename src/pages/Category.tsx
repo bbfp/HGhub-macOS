@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { Masonry, RowCard } from "../components/cards";
 import { Empty, Img } from "../components/ui";
 import { IBack, IChevR, IGrid, ITrophy } from "../icons";
+import { useDownloadedStatus } from "../downloadedStatus";
 
 export const CHANNELS = [
   { cate: "ai-duanju", name: "AI成人短剧", desc: "高能反转 · 一口气看完" },
@@ -19,6 +20,7 @@ export default function Category({ wide }: { wide: boolean }) {
   const [rows, setRows] = useState<Record<string, VideoCard[]>>({});
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const downloaded = useDownloadedStatus(Object.values(rows).flat().map((item) => item.id));
 
   useEffect(() => {
     let alive = true;
@@ -83,7 +85,7 @@ export default function Category({ wide }: { wide: boolean }) {
               </button>
               <div className="scroll-x flex gap-2.5 px-4 snap-x">
                 {list.map((v) => (
-                  <RowCard key={v.id} v={v} onOpen={() => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: c.name })} />
+                  <RowCard key={v.id} v={v} downloaded={downloaded[v.id]?.downloaded === true} onOpen={() => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: c.name })} />
                 ))}
                 {!list.length && <div className="h-[150px] flex items-center text-[11.5px] text-dim px-1">{loading ? "加载中…" : "暂无内容"}</div>}
               </div>
@@ -178,6 +180,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     if (sort === "高分") return (b.score || 0) - (a.score || 0);
     return b.id - a.id;
   });
+  const downloaded = useDownloadedStatus(sorted.map((item) => item.id));
 
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
@@ -200,7 +203,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
       </div>
       <div className="flex-1 scroll-y px-4 pt-3 pb-8">
         {sorted.length ? (
-          <Masonry videos={sorted} wide={wide} onOpen={(v) => push({ kind: "feed", videoIds: sorted.map((x) => x.id), index: sorted.findIndex((x) => x.id === v.id), title: name })} />
+          <Masonry videos={sorted} downloaded={Object.fromEntries(Object.entries(downloaded).map(([id, value]) => [id, value.downloaded]))} wide={wide} onOpen={(v) => push({ kind: "feed", videoIds: sorted.map((x) => x.id), index: sorted.findIndex((x) => x.id === v.id), title: name })} />
         ) : err ? (
           <Empty icon={<IGrid size={26} />} title="加载失败" sub={err} action="重试" onAction={loadMore} />
         ) : (

@@ -44,6 +44,12 @@ export default function Library() {
   useEffect(() => { void loadMore(); }, []); // loadMore owns its cursor state
 
   useEffect(() => {
+    if (!error || cursor === null) return undefined;
+    const timer = window.setTimeout(() => { void loadMore(); }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [error, cursor, loadMore]);
+
+  useEffect(() => {
     const ids = items.map((item) => item.drama_id).filter((id) => !checked.current.has(id));
     if (!ids.length) return;
     ids.forEach((id) => checked.current.add(id));

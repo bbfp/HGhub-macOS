@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { detectPlatform, mediaBase } from "./platform";
 import type {
-  CommentPage, Detail, DownloadSettings, DownloadTask, LibraryDrama, LibraryPage, LibraryUpdate, NetworkSettingsView, NetworkTestResult, Paged, PlayInfo, Post, RankItem, User, VideoCard,
+  CommentPage, Detail, DownloadSettings, DownloadStatusSummary, DownloadTask, LibraryDrama, LibraryPage, LibraryUpdate, NetworkSettingsView, NetworkTestResult, Paged, PlayInfo, Post, RankItem, User, VideoCard,
 } from "./types";
 
 /* ── 运行环境 ───────────────────────────────────────────── */
@@ -88,6 +88,7 @@ export const api = {
   downloadReveal: (id: string) => invoke<void>("download_reveal", { id }),
   downloadDelete: (ids: string[]) => invoke<number>("download_delete", { ids }),
   downloadTasks: () => invoke<DownloadTask[]>("download_tasks"),
+  downloadStatus: (dramaIds: number[]) => invoke<DownloadStatusSummary[]>("download_status", { dramaIds }),
   downloadWarnings: () => invoke<string[]>("download_warnings"),
   downloadEnqueue: (args: { dramaId: number; dramaTitle: string; episode: number; episodeTitle: string; sourceUrl: string; rootDir?: string; coverUrl?: string }) =>
     invoke<DownloadTask>("download_enqueue", {

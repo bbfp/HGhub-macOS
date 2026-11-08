@@ -5,7 +5,8 @@ import { useStore } from "../store";
 import { Avatar, Empty, Img, Modal, Toggle } from "../components/ui";
 import NetworkSettings from "../components/NetworkSettings";
 import DownloadLocationSettings from "../components/DownloadLocationSettings";
-import { IBroom, IChevR, IClock, IHeart, IInfo, ILink, ILogout, IMoon, IStar, ISun, IUser, IUserF } from "../icons";
+import { useDownloadedStatus } from "../downloadedStatus";
+import { IBroom, ICheck, IChevR, IClock, IHeart, IInfo, ILink, ILogout, IMoon, IStar, ISun, IUser, IUserF } from "../icons";
 
 export default function Profile({ wide }: { wide: boolean }) {
   const { user, setUser, loginOpen, setLoginOpen, logout, theme, setTheme, history, favs, clearHistory, clearLocal, push, toast } = useStore();
@@ -22,6 +23,7 @@ export default function Profile({ wide }: { wide: boolean }) {
   const [clearing, setClearing] = useState(false);
   const [loading, setLoading] = useState(false);
   const ids = tab === "fav" ? favs : history;
+  const downloaded = useDownloadedStatus(cards.map((card) => card.id));
 
   useEffect(() => {
     let alive = true;
@@ -160,6 +162,7 @@ export default function Profile({ wide }: { wide: boolean }) {
                 <button key={c.id} onClick={() => push({ kind: "feed", videoIds: cards.map((x) => x.id), index: cards.findIndex((x) => x.id === c.id), title: tab === "fav" ? "我的收藏" : "观看历史" })}
                   className="relative rounded-(--r-sm) overflow-hidden bg-s1 elev-1 pressable" style={{ paddingTop: "133%" }}>
                   <Img src={c.cover} />
+                  {downloaded[c.id]?.downloaded && <span className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/85 text-[8.5px] font-semibold text-white"><ICheck size={9} strokeWidth={2.5} /></span>}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5">
                     <div className="text-[10.5px] text-white clamp-2 leading-tight">{c.title}</div>
                   </div>

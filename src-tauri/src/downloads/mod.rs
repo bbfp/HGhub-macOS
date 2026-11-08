@@ -1,5 +1,6 @@
 //! Versioned local downloads. Tauri commands stay thin; the manager owns all task mutations.
 mod hls;
+mod index;
 pub mod library;
 mod manager;
 mod models;
@@ -10,6 +11,7 @@ mod tests;
 mod worker;
 
 pub(crate) use hls::resource_id;
+pub use index::{DownloadMarker, RemoteCheck};
 pub use manager::DownloadManager;
 pub use models::*;
 use std::path::PathBuf;
@@ -95,6 +97,7 @@ pub async fn download_library_update_check(
     let wanted = drama_ids.map(|ids| ids.into_iter().collect::<std::collections::HashSet<_>>());
     let checked_at = storage::now();
     let mut result = Vec::new();
+    let mut checks = Vec::new();
     for drama in items {
         if wanted
             .as_ref()
@@ -113,6 +116,30 @@ pub async fn download_library_update_check(
             Ok(value) => {
                 let remote = library::parse_remote_episodes(&value);
                 let remote_episode_count = remote.len();
+                checks.push(RemoteCheck {
+                    drama_id: drama.drama_id,
+                    title: value
+                        .get("title")
+                        .and_then(|title| title.as_str())
+                        .unwrap_or(&drama.title)
+                        .to_owned(),
+                    keywords: value
+                        .get("tags")
+                        .and_then(|tags| tags.as_array())
+                        .map(|tags| {
+                            tags.iter()
+                                .filter_map(|tag| tag.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    cover_url: value
+                        .get("cover")
+                        .and_then(|cover| cover.as_str())
+                        .map(str::to_owned)
+                        .or_else(|| drama.cover_url.clone()),
+                    checked_at: checked_at.clone(),
+                    remote_episode_count: remote_episode_count as u32,
+                });
                 let new_numbers = library::new_episode_numbers(
                     &remote
                         .iter()
@@ -152,6 +179,7 @@ pub async fn download_library_update_check(
             }),
         }
     }
+    state.downloads.record_remote_checks(checks).await?;
     Ok(result)
 }
 
@@ -259,6 +287,24 @@ pub async fn download_tasks(
     state: tauri::State<'_, crate::api::Api>,
 ) -> Result<Vec<DownloadTask>, String> {
     state.downloads.tasks().await
+}
+
+#[tauri::command]
+pub async fn download_status(
+    state: tauri::State<'_, crate::api::Api>,
+    drama_ids: Vec<i64>,
+) -> Result<Vec<DownloadMarker>, String> {
+    if !cfg!(target_os = "macos") {
+        return Ok(drama_ids
+            .into_iter()
+            .map(|drama_id| DownloadMarker {
+                drama_id,
+                downloaded: false,
+                episodes: Vec::new(),
+            })
+            .collect());
+    }
+    state.downloads.library_status(drama_ids).await
 }
 
 #[tauri::command]

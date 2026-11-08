@@ -86,7 +86,7 @@ pub async fn verified_file(path: &Path) -> bool {
     receipt.schema_version == 1 && !receipt.sha256.is_empty() && receipt.byte_len == metadata.len()
 }
 
-fn cover_for(output: &Path) -> Option<String> {
+pub(crate) fn cover_for(output: &Path) -> Option<String> {
     let path = output.parent()?.parent()?.join("cover.img");
     std::fs::metadata(&path)
         .ok()

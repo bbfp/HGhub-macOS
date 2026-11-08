@@ -1,11 +1,11 @@
 import React from "react";
 import { cover, fmt } from "../api";
 import type { VideoCard } from "../types";
-import { IHeartF, IPlayF } from "../icons";
+import { ICheck, IHeartF, IPlayF } from "../icons";
 import { Img } from "./ui";
 
 /* ——— 瀑布流卡片 ——— */
-export function WaterfallCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
+export function WaterfallCard({ v, onOpen, downloaded = false }: { v: VideoCard; onOpen: () => void; downloaded?: boolean }) {
   const ratio = 1.32;
   return (
     <button onClick={onOpen}
@@ -19,6 +19,9 @@ export function WaterfallCard({ v, onOpen }: { v: VideoCard; onOpen: () => void 
       <span className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/45 backdrop-blur-sm text-[9px] font-semibold text-white/90">
         <IPlayF size={9} />{fmt(v.hot)}
       </span>
+      {downloaded && <span className="absolute top-8 left-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/85 text-[9px] font-semibold text-white">
+        <ICheck size={10} strokeWidth={2.4} />已下载
+      </span>}
       <div className="absolute inset-x-0 bottom-0 p-2">
         <div className="text-[11.5px] font-medium text-white leading-snug clamp-2 tsh">{v.title}</div>
         <div className="flex items-center justify-between mt-1">
@@ -31,15 +34,15 @@ export function WaterfallCard({ v, onOpen }: { v: VideoCard; onOpen: () => void 
 }
 
 /* ——— 近无缝瀑布流 ——— */
-export function Masonry({ videos, onOpen, wide = false, gap = "gap-1" }: {
-  videos: VideoCard[]; onOpen: (v: VideoCard) => void; wide?: boolean; gap?: string;
+export function Masonry({ videos, onOpen, wide = false, gap = "gap-1", downloaded }: {
+  videos: VideoCard[]; onOpen: (v: VideoCard) => void; wide?: boolean; gap?: string; downloaded?: Readonly<Record<number, boolean>>;
 }) {
   const mb = gap === "gap-1" ? "mb-1" : "mb-1.5";
   return (
     <div className={`${wide ? "columns-3 xl:columns-4" : "columns-2"} ${gap} [column-fill:balance]`}>
       {videos.map((v) => (
         <div key={v.id} className={`break-inside-avoid ${mb}`}>
-          <WaterfallCard v={v} onOpen={() => onOpen(v)} />
+          <WaterfallCard v={v} downloaded={downloaded?.[v.id] === true} onOpen={() => onOpen(v)} />
         </div>
       ))}
     </div>
@@ -47,7 +50,7 @@ export function Masonry({ videos, onOpen, wide = false, gap = "gap-1" }: {
 }
 
 /* ——— 分类横向卡片 ——— */
-export function RowCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
+export function RowCard({ v, onOpen, downloaded = false }: { v: VideoCard; onOpen: () => void; downloaded?: boolean }) {
   return (
     <button onClick={onOpen} className="w-[104px] shrink-0 text-left snap-start pressable group">
       <div className="relative w-full rounded-(--r-sm) overflow-hidden bg-s1 elev-1" style={{ paddingTop: "133%" }}>
@@ -56,6 +59,9 @@ export function RowCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
         <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[8.5px] font-bold brand-grad">
           {v.is_finished ? "完结" : `${v.episode_count}集`}
         </span>
+        {downloaded && <span className="absolute top-8 right-1.5 flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-emerald-500/85 text-[8.5px] font-semibold text-white">
+          <ICheck size={9} strokeWidth={2.4} />
+        </span>}
         <span className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 text-[9px] font-semibold text-white/90 tsh"><IPlayF size={9} />{fmt(v.hot)}</span>
       </div>
       <div className="mt-1.5 text-[11.5px] font-medium text-on clamp-1 leading-tight">{v.title}</div>
@@ -65,19 +71,22 @@ export function RowCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
 }
 
 /* ——— 排行榜条目 ——— */
-export function RankRow({ item, onOpen, metricMax }: {
+export function RankRow({ item, onOpen, metricMax, downloaded = false }: {
   item: { rank: number; video_id: number; title: string; cover: string; tags: string[]; score: number; metric_value: number; metric_label: string };
-  onOpen: () => void; metricMax: number;
+  onOpen: () => void; metricMax: number; downloaded?: boolean;
 }) {
   const i = item.rank - 1;
   return (
     <button onClick={onOpen}
-      className={`w-full flex items-center gap-3 p-2.5 rounded-(--r-md) text-left mb-2 pressable a-rise ${i < 3 ? "bg-s3" : "bg-s2"}`}
+      className={`relative w-full flex items-center gap-3 p-2.5 rounded-(--r-md) text-left mb-2 pressable a-rise ${i < 3 ? "bg-s3" : "bg-s2"}`}
       style={{ animationDelay: `${Math.min(i * 35, 300)}ms` }}>
       <span className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0 tabular-nums ${i === 0 ? "bg-primary text-on-primary" : i < 3 ? "tonal" : "text-dim"}`}>{item.rank}</span>
       <div className="relative w-[52px] h-[68px] rounded-lg overflow-hidden bg-s3 shrink-0">
         <Img src={item.cover} />
       </div>
+      {downloaded && <span className="absolute top-2 right-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/85 text-[9px] font-semibold text-white">
+        <ICheck size={10} strokeWidth={2.4} />已下载
+      </span>}
       <div className="flex-1 min-w-0">
         <div className="text-[12.5px] font-medium text-on clamp-2 leading-snug">{item.title}</div>
         <div className="flex items-center gap-2 mt-1.5">

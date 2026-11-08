@@ -103,6 +103,7 @@ pub fn run() {
             downloads::download_local_path,
             downloads::download_reveal,
             downloads::download_tasks,
+            downloads::download_status,
             downloads::download_warnings,
             downloads::download_enqueue,
             downloads::download_pause,

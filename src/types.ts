@@ -184,6 +184,12 @@ export type DownloadTask = {
   updated_at: string;
 };
 
+export type DownloadStatusSummary = {
+  drama_id: number;
+  downloaded: boolean;
+  episodes: number[];
+};
+
 export type LibraryEpisode = {
   episode: number;
   title: string;
@@ -210,6 +216,7 @@ export type LibraryUpdateEpisode = { episode: number; title: string };
 export type LibraryUpdate = {
   drama_id: number;
   title: string;
+  keywords?: string[];
   status: "ok" | "unknown";
   remote_episode_count: number;
   new_episodes: LibraryUpdateEpisode[];

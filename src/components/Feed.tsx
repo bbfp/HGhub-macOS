@@ -8,8 +8,9 @@ import PlayerControls from "./PlayerControls";
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { sanitizeHtml } from "../html";
 import { setBackHandler } from "../back";
+import { useDownloadedStatus } from "../downloadedStatus";
 import {
-  IBack, IBoltF, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
+  IBack, IBoltF, ICheck, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
   ILink, IList, ILockF, IPauseF, IPlayF, IPlus, IStar, IStarF, IVol, IVolMute,
 } from "../icons";
 
@@ -134,6 +135,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const posterUrl = cover(meta.cover, 900);
   const hasVideo = kind === "video" || !!post?.video_url;
   const articleHtml = kind === "post" && !hasVideo ? sanitizeHtml(post?.content || "") : "";
+  const downloadedStatus = useDownloadedStatus(kind === "video" ? videoIds : []);
+  const currentDownloaded = downloadedStatus[curId];
 
   /* 倍速：长按 / 锁定 → 2.0x，否则用基准倍速 */
   const effRate = holdSpeed || speedLock ? 2 : rate;
@@ -514,6 +517,12 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                 </div>
               )}
 
+              {isActive && currentDownloaded?.downloaded && <span
+                className="absolute z-20 flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/85 text-[10px] font-semibold text-white"
+                style={{ top: isDesktop ? 58 : "calc(var(--sat, 0px) + 58px)", left: isDesktop ? 16 : 12 }}>
+                <ICheck size={11} strokeWidth={2.4} />已下载
+              </span>}
+
               {/* 图文帖：没有视频就给个正文入口 */}
               {isActive && kind === "post" && !!post && !post.video_url && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center">
@@ -786,7 +795,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         <div className={`desktop-dock-panel ${panel ? "is-open" : ""}`}>
           <div className="desktop-dock-inner">
             {panel === "episodes" ? (
-              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} onDownload={platform === "macos" ? enqueueEpisodes : undefined} />
+              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} downloadedEpisodes={currentDownloaded?.episodes || []} onPick={pickEp} onClose={() => setPanel(null)} onDownload={platform === "macos" ? enqueueEpisodes : undefined} />
             ) : panel === "comments" ? (
               <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
             ) : null}
@@ -796,7 +805,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         <Sheet open={panel !== null} onClose={() => setPanel(null)}>
           <div className="flex flex-col h-full" style={{ height: "72vh" }}>
             {panel === "episodes" ? (
-              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} onDownload={platform === "macos" ? enqueueEpisodes : undefined} />
+              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} downloadedEpisodes={currentDownloaded?.episodes || []} onPick={pickEp} onClose={() => setPanel(null)} onDownload={platform === "macos" ? enqueueEpisodes : undefined} />
             ) : (
               <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
             )}

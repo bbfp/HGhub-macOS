@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { Masonry, RankRow } from "../components/cards";
 import { Empty } from "../components/ui";
 import { IBack, IClose, IFireF, IRefresh, ISearch, ITrophy } from "../icons";
+import { useDownloadedStatus } from "../downloadedStatus";
 
 const HOT_TAGS = ["都市", "逆袭", "古风", "系统", "后宫", "校园", "仙侠", "职场", "大男主", "御姐", "脑洞", "奇幻"];
 
@@ -58,6 +59,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   };
 
   const querying = submitted.length > 0;
+  const downloaded = useDownloadedStatus(items.map((item) => item.id));
 
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
@@ -120,7 +122,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             <div className="text-[11.5px] text-mut mt-1 mb-2.5">「{submitted}」共 <span className="text-primary font-bold">{items.length}</span> 条结果</div>
             {items.length ? (
               <>
-                <Masonry videos={items} wide={wide} onOpen={(v) => push({ kind: "feed", videoIds: items.map((x) => x.id), index: items.findIndex((x) => x.id === v.id), title: `搜索 · ${submitted}` })} />
+                <Masonry videos={items} downloaded={Object.fromEntries(Object.entries(downloaded).map(([id, value]) => [id, value.downloaded]))} wide={wide} onOpen={(v) => push({ kind: "feed", videoIds: items.map((x) => x.id), index: items.findIndex((x) => x.id === v.id), title: `搜索 · ${submitted}` })} />
                 <div className="flex justify-center py-4">
                   {loading ? <div className="w-6 h-6 spinner" />
                     : page < pages ? (
@@ -166,6 +168,7 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 
   const max = Math.max(1, ...items.map((x) => x.metric_value || 0));
   const meta = RANK_TABS.find((t) => t.k === tab)!;
+  const downloaded = useDownloadedStatus(items.map((item) => item.video_id));
 
   return (
     <div className="absolute inset-0 bg-bg flex flex-col">
@@ -196,7 +199,7 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
           <div className="flex justify-center py-12"><div className="w-8 h-8 spinner" /></div>
         ) : items.length ? (
           items.map((it) => (
-            <RankRow key={`${it.video_id}-${it.rank}`} item={it} metricMax={max}
+            <RankRow key={`${it.video_id}-${it.rank}`} item={it} downloaded={downloaded[it.video_id]?.downloaded === true} metricMax={max}
               onOpen={() => push({ kind: "feed", videoIds: items.map((x) => x.video_id), index: items.findIndex((x) => x.video_id === it.video_id), title: "HG 热榜" })} />
           ))
         ) : (
