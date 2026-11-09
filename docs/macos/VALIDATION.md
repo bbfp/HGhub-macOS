@@ -1,17 +1,21 @@
-> 当前状态（2026-11-08）：下载管理与启动播放交互修订已完成；本轮未使用 Claude Code。当前 v1.0.2 交付候选会写入新的 `out/macos-v1.0.2-20261108/`，不会覆盖旧候选或生产 App。公开源码为 https://github.com/bbfp/HGhub-macOS。
+> 当前状态（2026-11-09）：v1.0.3 已构建，包含下载索引与外层已下载标识；本次打包未使用 Claude Code。交付候选位于 `out/macos-v1.0.3-20261109/`。公开源码为 https://github.com/bbfp/HGhub-macOS。
 
 # S0 候选交付验证
 
+## 2026-11-09 v1.0.3 打包
+
+版本号已更新为 1.0.3。平台测试 7 项通过；Rust 测试 50 项通过、6 项忽略；TypeScript/Vite、严格 Clippy 和 fmt 检查通过。新构建的 App 为 arm64，ad-hoc 签名验证通过；DMG 通过 `hdiutil verify`。本次未重做 DMG 拖拽安装或 App 界面验收。
+
 ## 2026-11-08 下载索引与外层标识修订
 
-本轮新增短剧级本地下载索引、列表批量查询、卡片“已下载”标识和选集级已下载对勾。首次启动现有下载数据后生成 schema 1 索引，隔离 macOS UI 读取到 33 部短剧；外层完整离线播放仍按已确认范围保留到后续阶段。
+本轮新增短剧级本地下载索引、列表批量查询、卡片“已下载”标识和选集级已下载对勾。首次启动现有下载数据后生成 schema 1 索引，本机候选 App 读取到 33 部短剧；外层完整离线播放仍按已确认范围保留到后续阶段。
 
 | 检查 | 结果与范围 | 证据 | 把握 |
 | --- | --- | --- | --- |
 | 索引逻辑 | 批量 ID 查询顺序、未知 ID 空结果、远端检查元数据保留下载集数、schema 往返共 3 项通过 | `src-tauri/src/downloads/index.rs` | 高 |
 | Rust 回归 | 50 项通过，6 项外网/人工用例忽略；严格 Clippy、fmt 通过 | `node scripts/macos.mjs cargo test --locked --offline --lib` | 高，仅限本地受控场景 |
 | 前端构建 | TypeScript/Vite 构建通过，平台测试 7 项通过 | `pnpm build`、`pnpm test:platform` | 高 |
-| macOS UI | “我下载的”读取 33 部本地短剧并显示已下载集数；下载页、分类入口和默认启动页可用；索引初始化后测试 App 已关闭 | 隔离候选 App CUA UI 树、本机 `library-index.json` | 高，使用现有本地任务数据 |
+| macOS UI | “我下载的”读取 33 部本地短剧并显示已下载集数；下载页、分类入口和默认启动页可用；索引初始化后测试 App 已关闭 | 候选 App CUA UI 树、本机 `library-index.json` | 高，使用现有本地任务数据 |
 | 候选打包 | arm64 App 签名验证、DMG 完整性校验通过 | 候选目录 `out/macos-download-index-20261108/` | 高，DMG 未做拖拽安装验收 |
 
 ## 2026-11-08 启动、更新与筛选修订
