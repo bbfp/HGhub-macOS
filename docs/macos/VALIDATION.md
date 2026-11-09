@@ -1,4 +1,18 @@
-> 当前状态（2026-11-09）：v1.0.3 已构建，包含下载索引与外层已下载标识；本次打包未使用 Claude Code。交付候选位于 `out/macos-v1.0.3-20261109/`。公开源码为 https://github.com/bbfp/HGhub-macOS。
+> 当前状态（2026-11-10）：v1.0.4 已修复源站播放接口迁移，并加入启动时 API 域名并行测速排序。交付候选位于 `out/macos-playback-fallback-20261110-v1.0.4/`。公开源码为 https://github.com/bbfp/HGhub-macOS。
+
+# 播放接口与启动测速修订
+
+## 2026-11-10 v1.0.4 播放接口与域名排序
+
+本轮将播放/下载地址切换到当前源站的 episode playback 接口，解析 `streams.main`，并保留旧接口兼容回退。启动时并行检测所有已配置域名，将有效响应按耗时排序；后续请求按该顺序 fallback。配置文件、下载任务、MP4、回执和本地库格式未改变。
+
+| 检查 | 结果与范围 | 证据 | 把握 |
+| --- | --- | --- | --- |
+| 回归测试 | Rust 54 项通过、6 项忽略；覆盖新播放字段、空成功响应继续换源、测速排序和旧格式映射 | `cargo test --locked --lib` | 高，仅限本地受控场景 |
+| 静态检查 | 严格 Clippy、fmt、TypeScript/Vite 和平台测试通过 | 本轮命令输出 | 高 |
+| 真实镜像播放 | 2833-13、10374-4、11334-14 在四个可用镜像返回 `streams.main`；对应 m3u8 HTTP 200 | 本轮只读镜像矩阵 | 高，依赖源站当前状态 |
+| 真实下载 | 117-3 使用新接口下载 186 个片段，合并 MP4 并由 ffprobe 解码音视频帧 | `.local/tests/live-playback-fallback-20261110/` | 高，本机当前网络 |
+| 候选打包 | arm64 App、内置 arm64 FFmpeg、ad-hoc 签名和 DMG `hdiutil verify` 均通过 | `out/macos-playback-fallback-20261110-v1.0.4/` | 高，未做 DMG 拖拽安装 |
 
 # S0 候选交付验证
 

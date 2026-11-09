@@ -32,6 +32,11 @@ pub fn run() {
         .setup(|app| {
             if cfg!(target_os = "macos") {
                 network::initialize(app.handle());
+                drop(tauri::async_runtime::spawn(async {
+                    if let Err(error) = network::ensure_startup_probe().await {
+                        eprintln!("[network] 启动域名测速失败：{error}");
+                    }
+                }));
             }
             network::bind_session_token(app.handle());
             if let Ok(resource_dir) = app.path().resource_dir() {

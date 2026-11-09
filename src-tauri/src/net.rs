@@ -295,13 +295,59 @@ async fn edge_at(
     path: &str,
     body: Option<&Value>,
     token: Option<&str>,
+    on_probe: impl FnMut(crate::network::DomainProbe),
+) -> Result<Value, String> {
+    edge_at_validated(
+        client,
+        domains,
+        method,
+        path,
+        body,
+        token,
+        on_probe,
+        |_| true,
+        "",
+        false,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn edge_at_validated(
+    client: &reqwest::Client,
+    domains: &[String],
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+    token: Option<&str>,
     mut on_probe: impl FnMut(crate::network::DomainProbe),
+    validate: impl Fn(&EdgeResponse) -> bool,
+    invalid_message: &str,
+    retry_errors: bool,
 ) -> Result<Value, String> {
     let count = domains.len();
     let mut last = String::from("没有可用的 API 域名");
     for domain in domains.iter().take(count) {
         let started = Instant::now();
-        let result = edge_once(client, domain, method, path, body, token).await;
+        let result = edge_once(client, domain, method, path, body, token)
+            .await
+            .map_err(|mut error| {
+                if retry_errors {
+                    error.retryable = true;
+                }
+                error
+            })
+            .and_then(|reply| {
+                if validate(&reply) {
+                    Ok(reply)
+                } else {
+                    Err(EdgeFailure {
+                        message: invalid_message.to_string(),
+                        status: Some(reply.status),
+                        retryable: true,
+                    })
+                }
+            });
         on_probe(crate::network::DomainProbe {
             domain: domain.clone(),
             ok: result.is_ok(),
@@ -327,6 +373,73 @@ async fn edge_at(
     Err(format!("已尝试 {count} 个 API 域名，均未连接成功。{last}"))
 }
 
+fn non_empty_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+pub(crate) fn playback_url(value: &Value) -> Option<String> {
+    non_empty_string(value.pointer("/streams/main"))
+        .or_else(|| non_empty_string(value.get("video_url")))
+}
+
+pub(crate) fn playback_url_hevc(value: &Value) -> Option<String> {
+    non_empty_string(value.pointer("/streams/hevc"))
+        .or_else(|| non_empty_string(value.get("video_url_hevc")))
+}
+
+pub(crate) async fn fetch_playback(
+    id: i64,
+    episode: u32,
+    token: Option<&str>,
+) -> Result<Value, String> {
+    crate::network::ensure_startup_probe().await?;
+    let modern_path = format!("/api/videos/{id}/episodes/{episode}/playback");
+    let body = json!({});
+    let domains = crate::network::request_domains(true);
+    let modern = edge_at_validated(
+        &API_CLIENT,
+        &domains,
+        "POST",
+        &modern_path,
+        Some(&body),
+        token,
+        |probe| crate::network::record_probe(probe, true),
+        |reply| playback_url(&reply.data).is_some(),
+        "播放接口未返回可用地址",
+        true,
+    )
+    .await;
+    match modern {
+        Ok(value) => Ok(value),
+        Err(modern_error) => {
+            // Keep older mirrors usable while they migrate to the current
+            // episode playback contract.
+            let legacy_path = format!("/api/videos/{id}/play?ep={episode}&page_texts=0");
+            let legacy = edge_at_validated(
+                &API_CLIENT,
+                &domains,
+                "GET",
+                &legacy_path,
+                None,
+                token,
+                |probe| crate::network::record_probe(probe, true),
+                |reply| playback_url(&reply.data).is_some(),
+                "旧播放接口未返回播放地址",
+                true,
+            )
+            .await;
+            match legacy {
+                Ok(value) => Ok(value),
+                Err(legacy_error) => Err(format!("{modern_error}；旧播放接口：{legacy_error}")),
+            }
+        }
+    }
+}
+
 /// Every configured site origin is a candidate. A request that has not reached
 /// a server may move to the next origin; ambiguous writes stop with an unknown
 /// result so the app never duplicates a mutation.
@@ -336,6 +449,7 @@ pub async fn edge(
     body: Option<Value>,
     token: Option<&str>,
 ) -> Result<Value, String> {
+    crate::network::ensure_startup_probe().await?;
     let domains = crate::network::request_domains(true);
     edge_at(
         &API_CLIENT,
@@ -363,6 +477,9 @@ pub async fn fetch_bytes(url: &str) -> Result<(Option<String>, Vec<u8>), String>
 
 pub async fn fetch_bytes_routed(raw_url: &str) -> Result<(Option<String>, Vec<u8>), String> {
     let site_url = crate::network::is_site_origin(raw_url);
+    if site_url {
+        crate::network::ensure_startup_probe().await?;
+    }
     let candidates = crate::network::routed_urls(raw_url, true);
     let mut last = String::from("网络请求失败");
     // Media may legitimately redirect to a CDN. It never carries the API

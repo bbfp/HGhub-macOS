@@ -91,14 +91,10 @@ impl DownloadManager {
             max_tasks,
             Arc::new(|drama, episode| {
                 Box::pin(async move {
-                    let path = format!("/api/videos/{drama}/play?ep={episode}&page_texts=0");
-                    let value = crate::net::edge_current("GET", &path, None).await?;
-                    value
-                        .get("video_url")
-                        .and_then(|v| v.as_str())
-                        .filter(|url| !url.is_empty())
-                        .map(str::to_owned)
-                        .ok_or_else(|| "未获取到这集的播放地址".into())
+                    let token = crate::network::session_token();
+                    let value =
+                        crate::net::fetch_playback(drama, episode, token.as_deref()).await?;
+                    crate::net::playback_url(&value).ok_or_else(|| "未获取到这集的播放地址".into())
                 })
             }),
         )

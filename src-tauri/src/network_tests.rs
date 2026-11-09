@@ -55,6 +55,61 @@ fn successful_read_domain_is_reused_without_changing_account_domain() {
 }
 
 #[test]
+fn rank_probes_puts_fast_working_domains_first_and_keeps_configured_ties() {
+    let configured = vec![
+        "https://slow.example.com".to_string(),
+        "https://failed.example.com".to_string(),
+        "https://fast.example.com".to_string(),
+        "https://tie.example.com".to_string(),
+    ];
+    let ranked = rank_probes(
+        &configured,
+        vec![
+            DomainProbe {
+                domain: configured[0].clone(),
+                ok: true,
+                status: Some(200),
+                elapsed_ms: 180,
+                error: None,
+            },
+            DomainProbe {
+                domain: configured[1].clone(),
+                ok: false,
+                status: None,
+                elapsed_ms: 5,
+                error: Some("连接失败".into()),
+            },
+            DomainProbe {
+                domain: configured[2].clone(),
+                ok: true,
+                status: Some(200),
+                elapsed_ms: 30,
+                error: None,
+            },
+            DomainProbe {
+                domain: configured[3].clone(),
+                ok: true,
+                status: Some(200),
+                elapsed_ms: 30,
+                error: None,
+            },
+        ],
+    );
+    assert_eq!(
+        ranked
+            .iter()
+            .map(|probe| probe.domain.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "https://fast.example.com",
+            "https://tie.example.com",
+            "https://slow.example.com",
+            "https://failed.example.com",
+        ]
+    );
+}
+
+#[test]
 fn damaged_network_settings_are_preserved_and_future_schema_is_not_overwritten() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../.local/tests")

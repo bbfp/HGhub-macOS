@@ -571,11 +571,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires reachable upstream source site"]
     async fn live_play_chain() {
-        use crate::net::edge;
-        let play = edge("GET", "/api/videos/117/play?ep=3&page_texts=0", None, None)
-            .await
-            .expect("play api");
-        let url = play["video_url"].as_str().expect("video_url").to_string();
+        use crate::net::{fetch_playback, playback_url};
+        let play = fetch_playback(117, 3, None).await.expect("play api");
+        let url = playback_url(&play).expect("video_url");
         println!("play url: {}", &url[..url.len().min(90)]);
         let (_, bytes) = fetch_bytes(&url).await.expect("fetch playlist");
         let text = String::from_utf8_lossy(&bytes);

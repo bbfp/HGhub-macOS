@@ -133,6 +133,62 @@ fn client() -> reqwest::Client {
 }
 const OK: &str = r#"{"status":1,"data":{"items":[{"id":117}]}}"#;
 
+#[test]
+fn playback_url_accepts_current_stream_shape_and_legacy_shape() {
+    let current = json!({
+        "streams": {
+            "main": "https://cdn.example/current.m3u8",
+            "hevc": "https://cdn.example/current-hevc.m3u8"
+        }
+    });
+    assert_eq!(
+        playback_url(&current).as_deref(),
+        Some("https://cdn.example/current.m3u8")
+    );
+    assert_eq!(
+        playback_url_hevc(&current).as_deref(),
+        Some("https://cdn.example/current-hevc.m3u8")
+    );
+
+    let legacy = json!({ "video_url": "https://cdn.example/legacy.m3u8" });
+    assert_eq!(
+        playback_url(&legacy).as_deref(),
+        Some("https://cdn.example/legacy.m3u8")
+    );
+    assert!(playback_url(&json!({ "streams": { "main": "" } })).is_none());
+}
+
+#[tokio::test]
+async fn validated_playback_reads_skip_empty_success_and_try_next_domain() {
+    let empty = Fixture::start(200, r#"{"status":1,"data":{"streams":{"main":""}}}"#, None);
+    let working = Fixture::start(
+        200,
+        r#"{"status":1,"data":{"streams":{"main":"https://cdn.example/ok.m3u8"}}}"#,
+        None,
+    );
+    let body = json!({});
+    let data = edge_at_validated(
+        &client(),
+        &[empty.base.clone(), working.base.clone()],
+        "POST",
+        "/api/videos/1/episodes/1/playback",
+        Some(&body),
+        None,
+        |_| {},
+        |reply| playback_url(&reply.data).is_some(),
+        "播放接口未返回可用地址",
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        playback_url(&data).as_deref(),
+        Some("https://cdn.example/ok.m3u8")
+    );
+    assert_eq!(empty.count(), 1);
+    assert_eq!(working.count(), 1);
+}
+
 #[tokio::test]
 async fn anonymous_reads_try_transport_then_5xx_then_success_in_order() {
     let dead = TcpListener::bind("127.0.0.1:0").unwrap();

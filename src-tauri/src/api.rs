@@ -60,6 +60,7 @@ pub async fn net_diag() -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn app_boot(state: State<'_, Api>) -> Result<Value, String> {
+    crate::network::ensure_startup_probe().await?;
     Ok(json!({
         "user": state.session.user(),
         "logged_in": state.session.token().is_some(),
@@ -198,11 +199,51 @@ pub async fn api_video(state: State<'_, Api>, id: i64) -> Result<Value, String> 
     state.get(&format!("/api/videos/{id}")).await
 }
 
+fn normalize_play_info(mut value: Value, id: i64, episode: u32) -> Result<Value, String> {
+    let main =
+        crate::net::playback_url(&value).ok_or_else(|| "播放接口未返回可用地址".to_string())?;
+    value["video_url"] = json!(main);
+    if let Some(hevc) = crate::net::playback_url_hevc(&value) {
+        value["video_url_hevc"] = json!(hevc);
+    }
+    if value.get("id").is_none() {
+        value["id"] = json!(id);
+    }
+    if value.get("ep_num").is_none() {
+        value["ep_num"] = json!(episode);
+    }
+    Ok(value)
+}
+
 #[tauri::command]
 pub async fn api_play(state: State<'_, Api>, id: i64, ep: u32) -> Result<Value, String> {
-    state
-        .get(&format!("/api/videos/{id}/play?ep={ep}&page_texts=0"))
-        .await
+    let value = crate::net::fetch_playback(id, ep, state.token().as_deref()).await?;
+    normalize_play_info(value, id, ep)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_play_info;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_play_info_exposes_current_stream_as_legacy_video_url() {
+        let value = normalize_play_info(
+            json!({
+                "streams": {
+                    "main": "https://cdn.example/main.m3u8",
+                    "hevc": "https://cdn.example/hevc.m3u8"
+                }
+            }),
+            2833,
+            13,
+        )
+        .unwrap();
+        assert_eq!(value["video_url"], "https://cdn.example/main.m3u8");
+        assert_eq!(value["video_url_hevc"], "https://cdn.example/hevc.m3u8");
+        assert_eq!(value["id"], 2833);
+        assert_eq!(value["ep_num"], 13);
+    }
 }
 
 /* ───────────────────────── 评论 / 互动 ───────────────────────── */

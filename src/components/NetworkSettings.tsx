@@ -47,9 +47,9 @@ export default function NetworkSettings() {
     <section className="mt-5 rounded-(--r-md) bg-s2 p-3.5" aria-labelledby="network-settings-title">
       <h2 id="network-settings-title" className="text-[13px] font-semibold text-on">网络设置 · 备用域名</h2>
       <p id="network-domains-help" className="text-[11px] text-mut leading-relaxed mt-2">
-        公开内容连接失败时依次换源，成功后优先使用该域名。每行一个域名，可添加、删除或调整顺序。
+        启动时会并行检测全部域名，按响应速度排序；首选域名失败后自动继续换源。每行一个域名，可添加、删除或调整顺序。
       </p>
-      {settings && <p className="text-[10.5px] text-mut mt-2 break-all">当前读取域名：{user ? settings.domains[0] : settings.active_domain}</p>}
+      {settings && <p className="text-[10.5px] text-mut mt-2 break-all">当前首选读取域名：{settings.active_domain}</p>}
       <label htmlFor="network-domains" className="block text-[11.5px] text-on mt-3">API 域名列表</label>
       <textarea id="network-domains" aria-describedby="network-domains-help" value={text}
         onChange={(event) => { setText(event.target.value); setResult(null); }} disabled={busy !== null || !settings}
@@ -69,11 +69,11 @@ export default function NetworkSettings() {
         </button>
         <button type="button" onClick={() => { void run("test"); }} disabled={busy !== null || !settings}
           className="h-9 px-4 rounded-(--r-ctl) bg-s3 text-on text-[12px] pressable disabled:opacity-50">
-          {busy === "test" ? "逐个检测中…" : "检测可用性"}
+          {busy === "test" ? "并行检测中…" : "检测可用性"}
         </button>
       </div>
       <div aria-live="polite" aria-busy={busy === "test"}>
-        {result && <p className="text-[11px] text-mut mt-3">{result.first_working ? `首个可用：${result.first_working}` : "所有域名暂时不可用，请检查网络或更换域名。"}</p>}
+        {result && <p className="text-[11px] text-mut mt-3">{result.first_working ? `最快可用：${result.first_working}` : "所有域名暂时不可用，请检查网络或更换域名。"}</p>}
         {probes.length > 0 && <ul className="mt-2 space-y-2">
           {probes.map((probe) => (
             <li key={probe.domain} className="rounded-(--r-sm) bg-s3 p-2.5 text-[10.5px]">

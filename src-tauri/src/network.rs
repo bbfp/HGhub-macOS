@@ -1,5 +1,6 @@
-//! Editable API origins. Anonymous reads may fail over; credentials and writes
-//! stay on the explicitly configured first origin. Media URLs are independent.
+//! Editable API origins. Requests use the startup-ranked origin order; safe
+//! read failures may fail over while ambiguous mutations are never resubmitted.
+//! Media URLs are independent.
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tauri::Manager;
+use tokio::sync::Mutex as AsyncMutex;
 use url::{Host, Url};
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -51,6 +53,7 @@ pub struct NetworkTestResult {
 struct NetworkState {
     settings: NetworkSettings,
     active_domain: Option<String>,
+    ranked_domains: Option<Vec<String>>,
     warning: Option<String>,
     probes: Vec<DomainProbe>,
 }
@@ -60,6 +63,7 @@ impl NetworkState {
         Self {
             settings,
             active_domain: None,
+            ranked_domains: None,
             warning,
             probes: Vec::new(),
         }
@@ -68,6 +72,7 @@ impl NetworkState {
 
 static STATE: Lazy<RwLock<NetworkState>> =
     Lazy::new(|| RwLock::new(NetworkState::new(defaults(), None)));
+static STARTUP_PROBE_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
 type TokenProvider = Arc<dyn Fn() -> Option<String> + Send + Sync>;
 static SESSION_TOKEN: Lazy<RwLock<Option<TokenProvider>>> = Lazy::new(|| RwLock::new(None));
 
@@ -302,9 +307,13 @@ fn ordered_domains(domains: &[String], active: Option<&str>, allow_fallback: boo
 
 pub fn request_domains(allow_fallback: bool) -> Vec<String> {
     let state = STATE.read().expect("network state lock");
+    let domains = state
+        .ranked_domains
+        .as_deref()
+        .unwrap_or(&state.settings.domains);
     platform_domains(
         cfg!(target_os = "macos"),
-        &state.settings.domains,
+        domains,
         state.active_domain.as_deref(),
         allow_fallback,
     )
@@ -392,8 +401,10 @@ pub fn settings_view() -> NetworkSettingsView {
     NetworkSettingsView {
         schema_version: state.settings.schema_version,
         active_domain: state
-            .active_domain
-            .clone()
+            .ranked_domains
+            .as_ref()
+            .and_then(|domains| domains.first().cloned())
+            .or_else(|| state.active_domain.clone())
             .or_else(|| state.settings.domains.first().cloned())
             .unwrap_or_else(|| PRIMARY_DOMAIN.to_string()),
         domains: state.settings.domains.clone(),
@@ -407,7 +418,7 @@ pub fn record_probe(probe: DomainProbe, prefer_success: bool) {
     if !state.settings.domains.contains(&probe.domain) {
         return;
     }
-    if probe.ok && prefer_success {
+    if probe.ok && prefer_success && state.ranked_domains.is_none() {
         state.active_domain = Some(probe.domain.clone());
     }
     state.probes.retain(|old| old.domain != probe.domain);
@@ -431,53 +442,84 @@ pub fn set_domains(
     Ok(settings_view())
 }
 
-pub async fn probe_domains(raw: Vec<String>) -> Result<NetworkTestResult, String> {
-    let domains = normalize_domains(&raw)?;
-    let mut probes = Vec::new();
-    for domain in domains {
-        let started = Instant::now();
-        let result = crate::net::edge_once(
-            &crate::net::API_CLIENT,
-            &domain,
-            "GET",
-            "/api/videos?page=1&size=1",
-            None,
-            None,
-        )
-        .await;
-        // HTTP 200 with HTML or a failing API envelope is not a working mirror.
-        let probe = match result {
-            Ok(reply)
-                if reply
-                    .data
-                    .get("items")
-                    .is_some_and(|items| items.is_array()) =>
-            {
-                DomainProbe {
-                    domain,
-                    ok: true,
-                    status: Some(reply.status),
-                    elapsed_ms: started.elapsed().as_millis() as u64,
-                    error: None,
-                }
-            }
-            Ok(reply) => DomainProbe {
+pub(crate) fn rank_probes(configured: &[String], mut probes: Vec<DomainProbe>) -> Vec<DomainProbe> {
+    probes.sort_by(|left, right| {
+        right
+            .ok
+            .cmp(&left.ok)
+            .then_with(|| left.elapsed_ms.cmp(&right.elapsed_ms))
+            .then_with(|| {
+                let left_index = configured
+                    .iter()
+                    .position(|domain| domain == &left.domain)
+                    .unwrap_or(usize::MAX);
+                let right_index = configured
+                    .iter()
+                    .position(|domain| domain == &right.domain)
+                    .unwrap_or(usize::MAX);
+                left_index.cmp(&right_index)
+            })
+    });
+    probes
+}
+
+async fn probe_one(domain: String) -> DomainProbe {
+    let started = Instant::now();
+    let result = crate::net::edge_once(
+        &crate::net::API_CLIENT,
+        &domain,
+        "GET",
+        "/api/videos?page=1&size=1",
+        None,
+        None,
+    )
+    .await;
+    // HTTP 200 with HTML or a failing API envelope is not a working mirror.
+    match result {
+        Ok(reply)
+            if reply
+                .data
+                .get("items")
+                .is_some_and(|items| items.is_array()) =>
+        {
+            DomainProbe {
                 domain,
-                ok: false,
+                ok: true,
                 status: Some(reply.status),
                 elapsed_ms: started.elapsed().as_millis() as u64,
-                error: Some("接口未返回视频列表".into()),
-            },
-            Err(error) => DomainProbe {
-                domain,
-                ok: false,
-                status: error.status,
-                elapsed_ms: started.elapsed().as_millis() as u64,
-                error: Some(error.message),
-            },
-        };
-        probes.push(probe);
+                error: None,
+            }
+        }
+        Ok(reply) => DomainProbe {
+            domain,
+            ok: false,
+            status: Some(reply.status),
+            elapsed_ms: started.elapsed().as_millis() as u64,
+            error: Some("接口未返回视频列表".into()),
+        },
+        Err(error) => DomainProbe {
+            domain,
+            ok: false,
+            status: error.status,
+            elapsed_ms: started.elapsed().as_millis() as u64,
+            error: Some(error.message),
+        },
     }
+}
+
+pub async fn probe_domains(raw: Vec<String>) -> Result<NetworkTestResult, String> {
+    let domains = normalize_domains(&raw)?;
+    let mut jobs = tokio::task::JoinSet::new();
+    for domain in domains.iter().cloned() {
+        jobs.spawn(probe_one(domain));
+    }
+    let mut probes = Vec::with_capacity(domains.len());
+    while let Some(result) = jobs.join_next().await {
+        if let Ok(probe) = result {
+            probes.push(probe);
+        }
+    }
+    let probes = rank_probes(&domains, probes);
     let first_working = probes
         .iter()
         .find(|probe| probe.ok)
@@ -486,6 +528,44 @@ pub async fn probe_domains(raw: Vec<String>) -> Result<NetworkTestResult, String
         probes,
         first_working,
     })
+}
+
+fn apply_startup_probe(domains: &[String], probes: Vec<DomainProbe>) {
+    let ranked = rank_probes(domains, probes);
+    let ordered = ranked
+        .iter()
+        .map(|probe| probe.domain.clone())
+        .collect::<Vec<_>>();
+    let active = ordered.first().cloned();
+    let mut state = STATE.write().expect("network state lock");
+    if state.settings.domains == domains {
+        state.ranked_domains = Some(ordered);
+        state.active_domain = active;
+        state.probes = ranked;
+    }
+}
+
+pub async fn ensure_startup_probe() -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Ok(());
+    }
+    let domains = {
+        let state = STATE.read().expect("network state lock");
+        if state.ranked_domains.is_some() {
+            return Ok(());
+        }
+        state.settings.domains.clone()
+    };
+    let _guard = STARTUP_PROBE_LOCK.lock().await;
+    {
+        let state = STATE.read().expect("network state lock");
+        if state.ranked_domains.is_some() || state.settings.domains != domains {
+            return Ok(());
+        }
+    }
+    let result = probe_domains(domains.clone()).await?;
+    apply_startup_probe(&domains, result.probes);
+    Ok(())
 }
 
 #[tauri::command]
